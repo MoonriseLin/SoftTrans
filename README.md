@@ -4,7 +4,7 @@
 
 Send files and text between your devices (phone to computer, laptop to tablet) from a web page. When the devices share a Wi-Fi network, data goes straight between them over the LAN. Everything is end-to-end encrypted. The server only introduces devices to each other and never sees what you send.
 
-**Try it:** open **https://mio.pantsu.uk** on two devices.
+**Try it:** open **[https://mio.pantsu.uk](https://mio.pantsu.uk)** on two devices.
 
 Nothing to install. On iPhone or Android you can add the page to your Home Screen and use it like an app (PWA). The interface is available in English, Simplified Chinese, Traditional Chinese and Japanese. It follows your browser's language, and the language you pick in the header is remembered.
 
