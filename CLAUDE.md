@@ -14,7 +14,7 @@ Send files and text between devices on the same Wi-Fi, for example phone to comp
 
 ## Current status
 
-Build steps 1–5 and 7 are working, and step 6 is partly done. The app is deployed at **https://mio.pantsu.uk:8443** (step 8, minus testing on real phones and real networks).
+Build steps 1–5 and 7 are working, and step 6 is partly done. The app is deployed at **https://mio.pantsu.uk** (step 8, minus testing on real phones and real networks).
 
 - `server/`: signaling server in plain JavaScript (ESM) on Node 20 with `ws`. No build step. `npm test` runs the hub unit tests.
 - `web/`: the live app, ported from the prototype. It uses no-build ES modules and serves under a strict CSP, so it has no inline scripts or styles.

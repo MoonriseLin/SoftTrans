@@ -4,7 +4,7 @@
 
 スマホからパソコンへ、ノートパソコンからタブレットへ。Web ページだけで、手元のデバイス間でファイルやテキストを送れます。同じ Wi-Fi につながっていれば、データは LAN 内でデバイス同士が直接やり取りします。通信はすべてエンドツーエンドで暗号化されます。サーバーはデバイス同士を引き合わせるだけで、送った内容を見ることはありません。
 
-**試してみる：** 2 台のデバイスで **https://mio.pantsu.uk:8443** を開いてください。
+**試してみる：** 2 台のデバイスで **https://mio.pantsu.uk** を開いてください。
 
 インストールは不要です。iPhone や Android ではページをホーム画面に追加して、アプリのように使えます（PWA）。表示言語は英語・简体中文・繁體中文・日本語に対応しています。最初はブラウザの言語に合わせて表示され、画面上部で選んだ言語は記憶されます。
 
@@ -147,8 +147,8 @@ npm test                                 # ユニットテスト
 ```sh
 cd e2e && npm install && npx playwright-core install chromium-headless-shell
 node run.mjs                                       # ローカルのサーバーに対して
-BASE=https://mio.pantsu.uk:8443 node run.mjs       # 本番環境に対して
-QUERY='?relay=1' WANT_ROUTE=relay WANT_LABEL='Via relay' BASE=https://mio.pantsu.uk:8443 node run.mjs
+BASE=https://mio.pantsu.uk node run.mjs       # 本番環境に対して
+QUERY='?relay=1' WANT_ROUTE=relay WANT_LABEL='Via relay' BASE=https://mio.pantsu.uk node run.mjs
 ```
 
 **デプロイ（VPS 上で）：** `sh deploy/install.sh`。nginx・coturn・証明書については [docs/deploy-notes.md](docs/deploy-notes.md)、メッセージ形式は [docs/protocol-draft.md](docs/protocol-draft.md)（英語）を参照してください。

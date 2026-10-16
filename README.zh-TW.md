@@ -4,7 +4,7 @@
 
 在網頁裡就能在你的裝置之間傳送檔案和文字，例如從手機到電腦、從筆電到平板。裝置在同一個 Wi-Fi 時，資料會透過區域網路直接在裝置之間傳輸。所有內容都是端對端加密：伺服器只負責讓裝置互相認識，永遠看不到你傳送的內容。
 
-**馬上試試：** 在兩台裝置上開啟 **https://mio.pantsu.uk:8443**。
+**馬上試試：** 在兩台裝置上開啟 **https://mio.pantsu.uk**。
 
 不需要安裝任何東西。在 iPhone 或 Android 上，可以把頁面加入主畫面，像 App 一樣使用（PWA）。介面支援英文、简体中文、繁體中文和日本語：預設跟隨瀏覽器語言，在頁面上方選擇的語言會被記住。
 
@@ -146,8 +146,8 @@ npm test                                 # 單元測試
 ```sh
 cd e2e && npm install && npx playwright-core install chromium-headless-shell
 node run.mjs                                       # 針對本機伺服器
-BASE=https://mio.pantsu.uk:8443 node run.mjs       # 針對正式環境
-QUERY='?relay=1' WANT_ROUTE=relay WANT_LABEL='Via relay' BASE=https://mio.pantsu.uk:8443 node run.mjs
+BASE=https://mio.pantsu.uk node run.mjs       # 針對正式環境
+QUERY='?relay=1' WANT_ROUTE=relay WANT_LABEL='Via relay' BASE=https://mio.pantsu.uk node run.mjs
 ```
 
 **部署（在 VPS 上）：** `sh deploy/install.sh`。nginx、coturn 和憑證的說明見 [docs/deploy-notes.md](docs/deploy-notes.md)，訊息格式見 [docs/protocol-draft.md](docs/protocol-draft.md)（英文）。

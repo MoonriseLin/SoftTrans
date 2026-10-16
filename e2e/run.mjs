@@ -1,6 +1,6 @@
 // End-to-end check: two isolated browser profiles, real server, real WebRTC.
 // Local:      npm i && npx playwright-core install chromium-headless-shell && node run.mjs
-// Production: BASE=https://mio.pantsu.uk:8443 node run.mjs
+// Production: BASE=https://mio.pantsu.uk node run.mjs
 // Via TURN:   QUERY='?relay=1' WANT_ROUTE=relay WANT_LABEL='Via relay' BASE=... node run.mjs
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
@@ -147,7 +147,8 @@ try {
   await a.selectOption('#langSel', 'ja');
   let L = await langOf(a);
   check(L.html === 'ja' && L.send === '送信' && L.nearby === '近くのデバイス' && L.ph.includes('ドロップ'), `Japanese applied (${L.nearby} / ${L.send})`);
-  check((await a.textContent('#to')).includes('直接 · 同じ Wi-Fi'), 'route label translated');
+  const jaRoute = { lan: '直接 · 同じ Wi-Fi', direct: '直接', relay: 'リレー経由' }[process.env.WANT_ROUTE || 'lan'];
+  check((await a.textContent('#to')).includes(jaRoute), `route label translated (${jaRoute})`);
   check((await a.textContent('.list .item .done')).includes('送信しました'), 'activity list translated');
   await a.reload();
   await a.waitForFunction(() => window.softdrop && softdrop.sig.state === 'open');
