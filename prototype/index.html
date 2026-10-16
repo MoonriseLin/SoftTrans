@@ -1,0 +1,642 @@
+<title>Softdrop</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,500&display=swap">
+<style>
+/* Layout: one calm column. A radar of nearby devices on a tonal slab, then the send card, a pairing strip and an activity list. */
+:root {
+  --bg: #FBF6F1;
+  --surface: #FFFDFB;
+  --surface-2: #F5EBE3;
+  --fg: #3B2F2A;
+  --muted: #7A6860;
+  --line: #EBDDD2;
+  --accent: #F3AE95;
+  --accent-hover: #EE9D80;
+  --on-accent: #4B2B1E;
+  --accent-ink: #A04E30;
+  --accent-soft: #FBE3D7;
+  --sage: #4F7F66;
+  --sage-soft: #E3EFE7;
+  --shadow: 0 1px 2px rgba(120, 80, 55, .05), 0 14px 34px -14px rgba(120, 80, 55, .18);
+  --font-body: 'Figtree', ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1E2230;
+    --surface: #262B3C;
+    --surface-2: #2C3246;
+    --fg: #F2E8E2;
+    --muted: #A8A3B4;
+    --line: #373D54;
+    --accent: #F4B093;
+    --accent-hover: #F7BEA5;
+    --on-accent: #3A2217;
+    --accent-ink: #F7C3AB;
+    --accent-soft: rgba(244, 176, 147, .14);
+    --sage: #8FC2A6;
+    --sage-soft: rgba(143, 194, 166, .14);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .22), 0 16px 36px -16px rgba(0, 0, 0, .55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1E2230;
+  --surface: #262B3C;
+  --surface-2: #2C3246;
+  --fg: #F2E8E2;
+  --muted: #A8A3B4;
+  --line: #373D54;
+  --accent: #F4B093;
+  --accent-hover: #F7BEA5;
+  --on-accent: #3A2217;
+  --accent-ink: #F7C3AB;
+  --accent-soft: rgba(244, 176, 147, .14);
+  --sage: #8FC2A6;
+  --sage-soft: rgba(143, 194, 166, .14);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .22), 0 16px 36px -16px rgba(0, 0, 0, .55);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 22px 44px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, .device:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 3px;
+}
+
+.app { max-width: 600px; margin: 0 auto; display: grid; gap: 22px; }
+.app > * { min-width: 0; }
+
+/* Header */
+.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+h1 { margin: 0; font: 500 34px/1.05 var(--font-display); letter-spacing: -.02em; }
+.tagline { margin: 8px 0 0; color: var(--muted); }
+.icon-btn {
+  flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%;
+  background: var(--surface); color: var(--fg); box-shadow: var(--shadow);
+  display: grid; place-items: center; cursor: pointer;
+  transition: transform .35s var(--ease);
+}
+.icon-btn:hover { transform: translateY(-1px); }
+
+.label { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.stage-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 10px; }
+.status { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* Radar */
+.radar {
+  position: relative; aspect-ratio: 10 / 9; overflow: hidden; border-radius: 30px;
+  background: radial-gradient(circle at 50% 52%, var(--accent-soft) 0%, transparent 62%), var(--surface-2);
+}
+.orbit { position: absolute; left: 50%; top: 52%; aspect-ratio: 1; border-radius: 50%; border: 1px solid var(--line); transform: translate(-50%, -50%); pointer-events: none; }
+.orbit.o1 { width: 40%; }
+.orbit.o2 { width: 72%; }
+.orbit.o3 { width: 104%; }
+.ripple {
+  position: absolute; left: 50%; top: 52%; width: 40%; aspect-ratio: 1; border-radius: 50%;
+  border: 1.5px solid var(--accent); opacity: 0; pointer-events: none;
+  transform: translate(-50%, -50%) scale(.4);
+  animation: ripple 6s ease-out infinite;
+}
+.ripple.late { animation-delay: 3s; }
+@keyframes ripple {
+  0% { opacity: .5; transform: translate(-50%, -50%) scale(.4); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.5); }
+}
+.me { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); }
+.me .dot {
+  width: 60px; height: 60px; border-radius: 50%; background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center; box-shadow: 0 0 0 9px var(--accent-soft);
+}
+.me span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 12px; font-size: 12px; font-weight: 600; color: var(--accent-ink); white-space: nowrap; }
+
+.device {
+  position: absolute; left: var(--x); top: var(--y); transform: translate(-50%, -50%);
+  width: 96px; display: grid; justify-items: center; gap: 5px; padding: 0; border: 0; background: none;
+  text-align: center; cursor: pointer;
+}
+.avatar {
+  width: 56px; height: 56px; border-radius: 50%; background: var(--surface); color: var(--accent-ink);
+  display: grid; place-items: center; box-shadow: var(--shadow);
+  transition: transform .4s var(--ease), box-shadow .4s var(--ease);
+}
+.device:hover .avatar { transform: translateY(-3px); }
+.device[aria-pressed="true"] .avatar { box-shadow: 0 0 0 3px var(--accent), var(--shadow); }
+.device.relay .avatar { outline: 1.5px dashed var(--muted); outline-offset: 4px; }
+.dname { font-size: 13px; font-weight: 600; line-height: 1.15; }
+.dkind { font-size: 11px; line-height: 1.15; color: var(--muted); }
+.who { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.who strong { color: var(--fg); font-weight: 600; }
+
+/* Cards and buttons */
+.card { background: var(--surface); border-radius: 26px; box-shadow: var(--shadow); padding: 18px; }
+.btn {
+  min-height: 44px; padding: 11px 20px; border: 0; border-radius: 99px; font-weight: 600; cursor: pointer;
+  transition: background .3s var(--ease), transform .3s var(--ease), opacity .3s;
+}
+.btn.sm { min-height: 40px; padding: 8px 16px; font-size: 14px; }
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn.ghost { background: var(--surface-2); }
+.btn.ghost:hover { background: var(--accent-soft); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: scale(.98); }
+
+.route {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px;
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+}
+.route::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.route.lan { background: var(--sage-soft); color: var(--sage); }
+.route.relay { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* Send */
+.to { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 12px; font-size: 14px; }
+.to .k { color: var(--muted); }
+.zone {
+  border-radius: 22px; background: var(--surface-2); padding: 14px 16px;
+  transition: box-shadow .4s var(--ease), background .4s var(--ease);
+  animation: breathe 7s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+  50% { box-shadow: 0 0 0 7px var(--accent-soft); }
+}
+.zone:focus-within { animation: none; box-shadow: 0 0 0 2px var(--accent); }
+.zone.over { animation: none; background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent), 0 0 44px 6px var(--accent-soft); }
+textarea {
+  display: block; width: 100%; min-height: 88px; padding: 0; border: 0; background: transparent;
+  resize: vertical; outline: none; line-height: 1.5;
+}
+textarea::placeholder { color: var(--muted); }
+.staged { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.staged:empty { display: none; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 4px 4px 12px;
+  border-radius: 99px; background: var(--surface); font-size: 13px;
+}
+.chip .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip .sz { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip-x { width: 28px; height: 28px; flex: none; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; cursor: pointer; color: var(--muted); }
+.chip-x:hover { background: var(--surface-2); color: var(--fg); }
+.actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.zone + .actions { margin-top: 14px; }
+
+/* Pairing */
+.pair { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px; padding: 16px 18px; border-radius: 26px; background: var(--surface-2); }
+.pair-info { min-width: 0; }
+.pair-info p { margin: 0; }
+.pair-info .sub { font-size: 13px; color: var(--muted); }
+.code { font-weight: 600; letter-spacing: .08em; font-variant-numeric: tabular-nums; color: var(--accent-ink); }
+.pair form { display: flex; gap: 8px; flex-wrap: wrap; }
+.pair input {
+  width: 132px; min-height: 44px; padding: 10px 16px; border: 0; border-radius: 99px; background: var(--surface);
+  font-variant-numeric: tabular-nums; letter-spacing: .08em;
+}
+.pair input::placeholder { color: var(--muted); letter-spacing: .08em; }
+.pairmsg { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
+
+/* Activity */
+.list { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.item {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  padding: 14px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow);
+}
+.item.new { animation: rise .5s var(--ease); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ico { width: 44px; height: 44px; border-radius: 14px; background: var(--accent-soft); color: var(--accent-ink); display: grid; place-items: center; }
+.meta { min-width: 0; }
+.title { font-weight: 600; overflow-wrap: anywhere; }
+.sub { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
+.speed { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.preview { margin: 8px 0 0; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); font-size: 14px; overflow-wrap: anywhere; user-select: text; }
+.end { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.end.buttons { flex-direction: row; }
+.done { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--sage); white-space: nowrap; }
+.muted { font-size: 14px; color: var(--muted); }
+.prog { position: relative; width: 44px; height: 44px; }
+.prog span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.empty { padding: 18px; border-radius: 22px; background: var(--surface-2); color: var(--muted); text-align: left; }
+
+.foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; font-size: 13px; color: var(--muted); }
+.foot p { margin: 0; max-width: 38ch; }
+.link { padding: 8px 0; border: 0; background: none; font-weight: 600; font-size: 13px; color: var(--accent-ink); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+@media (max-width: 480px) {
+  .end.buttons { grid-column: 1 / -1; justify-content: flex-end; }
+  .item:has(.end.buttons) { grid-template-columns: 44px minmax(0, 1fr); }
+  h1 { font-size: 30px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+
+<main class="app">
+  <header class="top">
+    <div>
+      <h1>Softdrop</h1>
+      <p class="tagline">Files and text between your devices. Wi-Fi first.</p>
+    </div>
+    <button type="button" class="icon-btn" id="themeBtn" aria-label="Switch theme"></button>
+  </header>
+
+  <section aria-labelledby="nearbyTitle">
+    <div class="stage-head">
+      <h2 class="label" id="nearbyTitle">Nearby</h2>
+      <p class="status" id="radarStatus"></p>
+    </div>
+    <div class="radar" id="radar" role="group" aria-label="Devices you can send to">
+      <div class="orbit o1"></div><div class="orbit o2"></div><div class="orbit o3"></div>
+      <div class="ripple"></div><div class="ripple late"></div>
+      <div class="me"><div class="dot" id="meDot"></div><span>You</span></div>
+    </div>
+    <p class="who">You appear to others as <strong>Quiet Fox</strong></p>
+  </section>
+
+  <section aria-labelledby="sendTitle">
+    <h2 class="label" id="sendTitle" style="margin-bottom:10px">Send</h2>
+    <div class="card">
+      <div class="to" id="to"></div>
+      <div class="zone" id="zone">
+        <textarea id="text" rows="3" placeholder="Type or paste text, or drop files here"></textarea>
+        <div class="staged" id="staged"></div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="pick">Choose files</button>
+        <button type="button" class="btn primary" id="send" disabled>Send</button>
+        <input type="file" id="fileInput" multiple hidden>
+      </div>
+    </div>
+  </section>
+
+  <section class="pair" aria-label="Pair a device on another network">
+    <div class="pair-info">
+      <p>Different network?</p>
+      <p class="sub">Share your code <span class="code">482 913</span> or enter theirs. These go through the relay.</p>
+    </div>
+    <form id="pairForm" autocomplete="off">
+      <input id="pairInput" inputmode="numeric" placeholder="000 000" aria-label="Pairing code from the other device" maxlength="7">
+      <button type="submit" class="btn primary" id="pairBtn" disabled>Pair</button>
+    </form>
+    <p class="pairmsg" id="pairMsg" role="status" aria-live="polite"></p>
+  </section>
+
+  <section aria-labelledby="actTitle">
+    <h2 class="label" id="actTitle">Activity</h2>
+    <ul class="list" id="list"></ul>
+  </section>
+
+  <footer class="foot">
+    <p>Prototype. Devices and transfers here are simulated. Real connections come with WebRTC and your VPS.</p>
+    <button type="button" class="link" id="simulate">Preview another incoming transfer</button>
+  </footer>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+
+  var ICON = {
+    laptop: '<rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2.5 19h19"/>',
+    tablet: '<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M11 18h2"/>',
+    desktop: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/>',
+    phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+    file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+    text: '<path d="M5 6h14M5 12h14M5 18h9"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+    moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    auto: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/>'
+  };
+  function svg(name, size) {
+    size = size || 22;
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
+  }
+
+  function fmtB(b) {
+    if (b < 1000) return b + ' B';
+    if (b < 1e6) return (b / 1e3).toFixed(b < 1e4 ? 1 : 0) + ' KB';
+    if (b < 1e9) return (b / 1e6).toFixed(1) + ' MB';
+    return (b / 1e9).toFixed(2) + ' GB';
+  }
+  function routeLabel(r) { return r === 'lan' ? 'Direct · same Wi-Fi' : 'Via relay'; }
+  function routeChip(r) { return '<span class="route ' + r + '">' + routeLabel(r) + '</span>'; }
+
+  /* ---------- state ---------- */
+  var SLOTS = [
+    { x: 24, y: 30 }, { x: 78, y: 31 }, { x: 27, y: 78 },
+    { x: 76, y: 76 }, { x: 50, y: 19 }, { x: 14, y: 56 }
+  ];
+  var devices = [
+    { id: 'd1', name: 'Mochi', kind: 'MacBook', icon: 'laptop', route: 'lan', slot: 0 },
+    { id: 'd2', name: 'Linen', kind: 'iPad', icon: 'tablet', route: 'lan', slot: 1 },
+    { id: 'd3', name: 'Pebble', kind: 'Windows PC', icon: 'desktop', route: 'lan', slot: 2 },
+    { id: 'd4', name: 'Cedar', kind: 'Android', icon: 'phone', route: 'relay', slot: 3 }
+  ];
+  var pairPool = [
+    { name: 'Fern', kind: 'Chromebook', icon: 'laptop' },
+    { name: 'Sage', kind: 'Pixel', icon: 'phone' }
+  ];
+  var selected = 'd1';
+  var files = [];
+  var nid = 10;
+  var transfers = [
+    { id: 1, dir: 'in', dev: 'd1', kind: 'file', title: 'trip-notes.pdf', bytes: 2411724, status: 'pending', p: 0, route: 'lan' },
+    { id: 3, dir: 'out', dev: 'd1', kind: 'text', title: 'Text message', text: 'Meet at the east gate at 6', bytes: 26, status: 'done', p: 1, route: 'lan', speed: 31.2 },
+    { id: 2, dir: 'out', dev: 'd4', kind: 'file', title: 'poster-v3.png', bytes: 4823910, status: 'done', p: 1, route: 'relay', speed: 3.4 }
+  ];
+  var samples = [
+    { kind: 'text', text: 'Door code for the studio is 4417' },
+    { kind: 'file', title: 'receipt-oct.jpg', bytes: 1860000 },
+    { kind: 'text', text: 'https://example.com/menu' },
+    { kind: 'file', title: 'demo-take2.mov', bytes: 182000000 }
+  ];
+  var sampleIdx = 0;
+
+  function dev(id) { for (var i = 0; i < devices.length; i++) if (devices[i].id === id) return devices[i]; return null; }
+  function devLabel(d) { return d.name + ' · ' + d.kind; }
+  function subKind(d) { return d.route === 'relay' ? d.kind + ' · relay' : d.kind; }
+
+  /* ---------- theme ---------- */
+  var modes = ['system', 'light', 'dark'];
+  var mode = 'system';
+  try { var m = localStorage.getItem('softdrop-theme'); if (modes.indexOf(m) > -1) mode = m; } catch (e) {}
+  function applyTheme() {
+    var r = document.documentElement;
+    if (mode === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', mode);
+    $('themeBtn').innerHTML = svg(mode === 'light' ? 'sun' : mode === 'dark' ? 'moon' : 'auto', 20);
+    $('themeBtn').setAttribute('aria-label', 'Theme: ' + mode + '. Tap to change');
+    $('themeBtn').title = 'Theme: ' + mode;
+  }
+  $('themeBtn').addEventListener('click', function () {
+    mode = modes[(modes.indexOf(mode) + 1) % modes.length];
+    try { localStorage.setItem('softdrop-theme', mode); } catch (e) {}
+    applyTheme();
+  });
+  applyTheme();
+  $('meDot').innerHTML = svg('phone', 26);
+
+  /* ---------- radar ---------- */
+  var radar = $('radar');
+  function renderRadar() {
+    var old = radar.querySelectorAll('.device');
+    for (var i = 0; i < old.length; i++) old[i].remove();
+    devices.forEach(function (d) {
+      var s = SLOTS[d.slot];
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'device' + (d.route === 'relay' ? ' relay' : '');
+      b.style.setProperty('--x', s.x + '%');
+      b.style.setProperty('--y', s.y + '%');
+      b.setAttribute('aria-pressed', d.id === selected ? 'true' : 'false');
+      b.setAttribute('aria-label', devLabel(d) + ', ' + routeLabel(d.route));
+      b.dataset.id = d.id;
+      b.innerHTML = '<span class="avatar">' + svg(d.icon, 24) + '</span><span class="dname">' + esc(d.name) + '</span><span class="dkind">' + esc(subKind(d)) + '</span>';
+      radar.appendChild(b);
+    });
+    var lan = devices.filter(function (d) { return d.route === 'lan'; }).length;
+    var rel = devices.length - lan;
+    $('radarStatus').textContent = lan + ' on this Wi-Fi · ' + rel + ' paired elsewhere';
+  }
+  radar.addEventListener('click', function (e) {
+    var b = e.target.closest('.device');
+    if (!b) return;
+    selected = b.dataset.id;
+    var all = radar.querySelectorAll('.device');
+    for (var i = 0; i < all.length; i++) all[i].setAttribute('aria-pressed', all[i] === b ? 'true' : 'false');
+    renderTo();
+    updateSend();
+  });
+
+  /* ---------- send card ---------- */
+  var ta = $('text'), sendBtn = $('send'), zone = $('zone');
+  function renderTo() {
+    var d = dev(selected);
+    $('to').innerHTML = d
+      ? '<span class="k">To</span><strong>' + esc(devLabel(d)) + '</strong>' + routeChip(d.route)
+      : '<span class="k">Pick a device above to send to</span>';
+  }
+  function renderStaged() {
+    $('staged').innerHTML = files.map(function (f, i) {
+      return '<span class="chip"><span class="nm">' + esc(f.name) + '</span><span class="sz">' + fmtB(f.size) + '</span>' +
+        '<button type="button" class="chip-x" data-i="' + i + '" aria-label="Remove ' + esc(f.name) + '">' + svg('x', 14) + '</button></span>';
+    }).join('');
+  }
+  function updateSend() {
+    var n = files.length + (ta.value.trim() ? 1 : 0);
+    sendBtn.disabled = !(dev(selected) && n);
+    sendBtn.textContent = n > 1 ? 'Send ' + n + ' items' : 'Send';
+  }
+  function addFiles(list) {
+    for (var i = 0; i < list.length; i++) files.push(list[i]);
+    renderStaged(); updateSend();
+  }
+  $('staged').addEventListener('click', function (e) {
+    var x = e.target.closest('.chip-x');
+    if (!x) return;
+    files.splice(Number(x.dataset.i), 1);
+    renderStaged(); updateSend();
+  });
+  $('pick').addEventListener('click', function () { $('fileInput').click(); });
+  $('fileInput').addEventListener('change', function (e) {
+    addFiles(e.target.files);
+    e.target.value = '';
+  });
+  ta.addEventListener('input', updateSend);
+  ta.addEventListener('paste', function (e) {
+    var fs = e.clipboardData && e.clipboardData.files;
+    if (fs && fs.length) { e.preventDefault(); addFiles(fs); }
+  });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    zone.addEventListener(ev, function (e) {
+      e.preventDefault();
+      if (ev === 'dragleave' && zone.contains(e.relatedTarget)) return;
+      zone.classList.remove('over');
+      if (ev === 'drop' && e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    });
+  });
+  sendBtn.addEventListener('click', function () {
+    var d = dev(selected);
+    if (!d) return;
+    var text = ta.value.trim();
+    var batch = files.map(function (f) { return { kind: 'file', title: f.name, bytes: f.size }; });
+    if (text) batch.push({ kind: 'text', title: 'Text message', text: text, bytes: new Blob([text]).size });
+    if (!batch.length) return;
+    batch.forEach(function (b) {
+      var t = { id: nid++, dir: 'out', dev: d.id, route: d.route, kind: b.kind, title: b.title, text: b.text, bytes: b.bytes, status: 'pending', p: 0, isNew: true };
+      transfers.unshift(t);
+      startTransfer(t);
+    });
+    ta.value = ''; files = [];
+    renderStaged(); updateSend(); renderList();
+  });
+
+  /* ---------- transfers ---------- */
+  var list = $('list');
+  var raf = 0;
+  var C = 2 * Math.PI * 15;
+
+  function ringHTML(t) {
+    return '<div class="prog" role="img" aria-label="Transfer progress"><svg width="44" height="44" viewBox="0 0 36 36">' +
+      '<circle cx="18" cy="18" r="15" fill="none" stroke="var(--line)" stroke-width="3"/>' +
+      '<circle data-ring cx="18" cy="18" r="15" fill="none" stroke="var(--accent-ink)" stroke-width="3" stroke-linecap="round" stroke-dasharray="' + C + '" stroke-dashoffset="' + (C * (1 - t.p)) + '" transform="rotate(-90 18 18)"/>' +
+      '</svg><span data-pct>' + Math.round(t.p * 100) + '%</span></div>';
+  }
+
+  function itemHTML(t) {
+    var d = dev(t.dev);
+    var who = d ? devLabel(d) : 'Unknown device';
+    var end = '', endCls = 'end', speed = '';
+    if (t.status === 'pending' && t.dir === 'in') {
+      endCls += ' buttons';
+      end = '<button type="button" class="btn primary sm" data-act="accept" data-id="' + t.id + '">Accept</button>' +
+            '<button type="button" class="btn ghost sm" data-act="decline" data-id="' + t.id + '">Decline</button>';
+    } else if (t.status === 'active' || t.status === 'pending') {
+      end = ringHTML(t);
+      speed = '<span class="speed" data-speed></span>';
+    } else if (t.status === 'done') {
+      end = '<span class="done">' + svg('check', 18) + (t.dir === 'in' ? 'Received' : 'Sent') + '</span>';
+      if (t.dir === 'in' && t.kind === 'text') end += '<button type="button" class="btn ghost sm" data-act="copy" data-id="' + t.id + '">Copy</button>';
+      speed = t.speed ? '<span class="speed">' + t.speed.toFixed(1) + ' MB/s</span>' : '';
+    } else {
+      end = '<span class="muted">Declined</span>';
+    }
+    var showText = t.kind === 'text' && t.text && (t.dir === 'out' || t.status === 'done');
+    var line = (t.dir === 'in' ? 'From ' : 'To ') + esc(who) + ' · ' + fmtB(t.bytes);
+    if (t.dir === 'in' && t.status === 'pending') line = 'Wants to send you · ' + fmtB(t.bytes) + ' from ' + esc(who);
+    return '<li class="item' + (t.isNew ? ' new' : '') + '" data-id="' + t.id + '">' +
+      '<div class="ico">' + svg(t.kind === 'file' ? 'file' : 'text', 22) + '</div>' +
+      '<div class="meta"><div class="title">' + esc(t.title) + '</div><div class="sub">' + line + '</div>' +
+      '<div class="chips">' + routeChip(t.route) + speed + '</div>' +
+      (showText ? '<p class="preview">' + esc(t.text) + '</p>' : '') + '</div>' +
+      '<div class="' + endCls + '">' + end + '</div></li>';
+  }
+
+  function renderList() {
+    if (!transfers.length) {
+      list.innerHTML = '<li class="empty">Nothing yet. Pick a device and send something.</li>';
+      return;
+    }
+    list.innerHTML = transfers.map(itemHTML).join('');
+    transfers.forEach(function (t) { delete t.isNew; });
+  }
+
+  function startTransfer(t) {
+    t.status = 'active';
+    t.t0 = performance.now();
+    t.speed = t.route === 'lan' ? 24 + Math.random() * 22 : 2.4 + Math.random() * 2;
+    var ms = (t.bytes / (t.speed * 1e6)) * 1000;
+    var lo = t.route === 'lan' ? 1400 : 2600, hi = t.route === 'lan' ? 5200 : 9000;
+    t.dur = Math.max(lo, Math.min(hi, ms));
+    if (!raf) raf = requestAnimationFrame(tick);
+  }
+
+  function tick(now) {
+    var finished = false, running = false;
+    transfers.forEach(function (t) {
+      if (t.status !== 'active') return;
+      var e = Math.max(0, Math.min(1, (now - t.t0) / t.dur));
+      t.p = e;
+      if (e >= 1) { t.status = 'done'; finished = true; return; }
+      running = true;
+      var li = list.querySelector('[data-id="' + t.id + '"]');
+      if (!li) return;
+      var ring = li.querySelector('[data-ring]');
+      var pct = li.querySelector('[data-pct]');
+      var sp = li.querySelector('[data-speed]');
+      if (ring) ring.setAttribute('stroke-dashoffset', C * (1 - e));
+      if (pct) pct.textContent = Math.round(e * 100) + '%';
+      if (sp) sp.textContent = (t.speed * (0.93 + 0.14 * Math.sin(now / 260))).toFixed(1) + ' MB/s';
+    });
+    if (finished) renderList();
+    raf = running ? requestAnimationFrame(tick) : 0;
+  }
+
+  list.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]');
+    if (!b) return;
+    var id = Number(b.dataset.id);
+    var t = transfers.filter(function (x) { return x.id === id; })[0];
+    if (!t) return;
+    var act = b.dataset.act;
+    if (act === 'accept') { startTransfer(t); renderList(); }
+    else if (act === 'decline') { t.status = 'declined'; renderList(); }
+    else if (act === 'copy') {
+      var label = function (s) { b.textContent = s; setTimeout(function () { b.textContent = 'Copy'; }, 1800); };
+      try {
+        navigator.clipboard.writeText(t.text).then(function () { label('Copied'); }, function () { label('Select the text'); });
+      } catch (err) { label('Select the text'); }
+    }
+  });
+
+  $('simulate').addEventListener('click', function () {
+    var lan = devices.filter(function (d) { return d.route === 'lan'; });
+    var d = lan[Math.floor(Math.random() * lan.length)];
+    var s = samples[sampleIdx++ % samples.length];
+    var t = {
+      id: nid++, dir: 'in', dev: d.id, route: d.route, kind: s.kind, title: s.kind === 'file' ? s.title : 'Text message',
+      text: s.text, bytes: s.kind === 'file' ? s.bytes : new Blob([s.text]).size, status: 'pending', p: 0, isNew: true
+    };
+    transfers.unshift(t);
+    renderList();
+  });
+
+  /* ---------- pairing ---------- */
+  var pairInput = $('pairInput'), pairBtn = $('pairBtn'), pairMsg = $('pairMsg');
+  pairInput.addEventListener('input', function () {
+    var digits = pairInput.value.replace(/\D/g, '').slice(0, 6);
+    pairInput.value = digits.length > 3 ? digits.slice(0, 3) + ' ' + digits.slice(3) : digits;
+    pairBtn.disabled = digits.length !== 6;
+  });
+  $('pairForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var digits = pairInput.value.replace(/\D/g, '');
+    if (digits.length !== 6) return;
+    if (digits === '482913') { pairMsg.textContent = 'That is your own code. Enter the code shown on the other device.'; return; }
+    var used = devices.map(function (d) { return d.slot; });
+    var slot = -1;
+    for (var i = 0; i < SLOTS.length; i++) if (used.indexOf(i) === -1) { slot = i; break; }
+    var next = pairPool.shift();
+    if (!next || slot < 0) { pairMsg.textContent = 'The prototype only simulates two more devices.'; return; }
+    var d = { id: 'd' + (nid++), name: next.name, kind: next.kind, icon: next.icon, route: 'relay', slot: slot };
+    devices.push(d);
+    selected = d.id;
+    pairInput.value = ''; pairBtn.disabled = true;
+    pairMsg.textContent = 'Paired with ' + devLabel(d) + '. Transfers to it go through the relay.';
+    renderRadar(); renderTo(); updateSend();
+  });
+
+  /* ---------- start ---------- */
+  renderRadar();
+  renderTo();
+  renderStaged();
+  updateSend();
+  renderList();
+})();
+</script>
