@@ -1,5 +1,18 @@
 # VPS deploy notes
 
+## Live deployment (October 2026)
+
+- Page and WebSocket: **https://mio.pantsu.uk:8443** (`wss://mio.pantsu.uk:8443/ws`). Port 80 serves ACME challenges and redirects to 8443. Port 443 on this host belongs to other sites and is untouched.
+- nginx (custom build in `/usr/local/nginx`): `servers/mio.pantsu.uk.conf`, from `deploy/nginx-softdrop.conf`. nginx passes `X-Real-IP`. The app trusts that header only from loopback.
+- App: `softdrop.service` (systemd, user `softdrop`, hardened). Runs `/opt/softdrop/server/src/index.js` on `127.0.0.1:8480` and serves `/opt/softdrop/web`. Config and the TURN secret live in `/etc/softdrop/softdrop.env` (root only). Redeploy with `sh deploy/install.sh`.
+- coturn (Debian package): `/etc/turnserver.conf`, from `deploy/turnserver.conf` with the secret filled in. Ports 3478 udp/tcp and 5349 tcp (TLS). The relay range is **49160–49999/udp**, narrowed to stay clear of other services on the host.
+- Certificate: Let's Encrypt for `mio.pantsu.uk` (webroot `/var/www/acme`, ECDSA), renewed by the existing certbot timer. The deploy hook `/etc/letsencrypt/renewal-hooks/deploy/coturn-softdrop.sh` copies it to `/etc/coturn/certs` and restarts coturn. The existing hook reloads nginx.
+- Health: `curl https://mio.pantsu.uk:8443/healthz` returns counts only, no IDs.
+- Firewall: the host has no nftables or iptables rules. If the provider has a cloud firewall, open 80/tcp, 8443/tcp, 3478/udp+tcp, 5349/tcp and 49160–49999/udp.
+
+The notes below are the original generic plan.
+
+
 Status: notes for the first deployment. Verify each setting against the current coturn and reverse-proxy documentation before relying on it.
 
 ## What runs on the VPS

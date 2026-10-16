@@ -1,0 +1,33 @@
+[Unit]
+Description=Softdrop signaling server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=softdrop
+Group=softdrop
+WorkingDirectory=/opt/softdrop/server
+EnvironmentFile=/etc/softdrop/softdrop.env
+ExecStart=/usr/bin/node /opt/softdrop/server/src/index.js
+Restart=on-failure
+RestartSec=2
+
+# Hardening: the server only needs to read its own files and open a loopback socket.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+CapabilityBoundingSet=
+ReadOnlyPaths=/opt/softdrop
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 # Protocol draft
 
-Status: draft. Written as a starting point for Claude Code, not a final spec. Change it as the build teaches you things.
+Status: implemented in `server/` and `web/js/` (October 2026). Still open to change. The section "As built" at the end lists where the code differs from the first draft.
 
 There are two layers: the signaling protocol (browser to VPS, over WebSocket) and the transfer protocol (browser to browser, over a WebRTC data channel).
 
@@ -111,3 +111,29 @@ const stats = await pc.getStats();
 | `relay` | any | Via relay |
 
 The label can change if ICE restarts. Update the UI when it does.
+
+## 4. As built (changes from the first draft)
+
+**Registration.** The server opens with `challenge` `{nonce}`. The client answers `hello` `{id, name, kind, pub, links, sig}`. `sig` is the device key's ECDSA P-256/SHA-256 signature (IEEE P1363, base64url) over `softdrop/hello\n<nonce>\n<id>`. The server checks `id == base64url(SHA-256(raw pub))` and the signature, so nobody can register under another device's ID. A second connection with the same ID replaces the first (close code 4001).
+
+**Paired devices without server storage.** `hello.links` and the `links` `{ids}` message list the device IDs this device trusts. The server shows two devices on different networks to each other only when *both* list each other. The server stores nothing on disk.
+
+**Extra messages.** Client → server: `links` `{ids}`, `rename` `{name}`, `ice` (refresh TURN credentials), `pair-cancel`. Server → client: `peer-updated` `{peer}`, `ice` `{ice}`. Signal kinds: `offer`, `answer`, `ice`, `bye`.
+
+**Signed signaling.** `signal` is `{to, kind, data, ts, sig}`. `data` is a JSON *string*, so the exact bytes are signed. `sig` covers `softdrop/signal\n<from>\n<to>\n<kind>\n<ts>\n<data>`. The receiver verifies it against the sender's public key (whose hash is the sender's ID) before using the message. It also drops messages more than 10 minutes old and replays of the same signature. Each `data` carries `sess`, a random session ID for one RTCPeerConnection. Glare is resolved by ID order: the device with the lower ID is polite and yields.
+
+**DTLS pinning.** The `a=fingerprint` lines come from the signed SDP. When the channel opens, the remote certificate fingerprint from `getStats()` must be one of them, or the link is dropped.
+
+**Data channel.** A pre-negotiated channel (`negotiated: true, id: 0`) named `softdrop`, so glare never leaves one side without a channel. Chunks are 64 KiB when `pc.sctp.maxMessageSize` allows it, and 16 KiB otherwise. On a 4-vCPU test VPS, 16 KiB messages topped out at about 3 MB/s and 64 KiB at about 20 MB/s. Backpressure: pause above 2 MiB buffered, resume at the 512 KiB `bufferedamountlow`. The receiver sends `ack` every 512 KiB. Text of 16 KiB or less travels inline in `meta.body`.
+
+**Hashing.** SHA-256 over the whole payload, sent in `done`. The sender hashes the file in a separate pass. The receiver hashes incrementally as chunks arrive (`web/js/sha256.js`, because WebCrypto has no streaming digest).
+
+**Storage.** Files over 4 MB are written to the Origin Private File System when `createWritable` exists (in batches of about 1 MB). Otherwise they are folded into a Blob every 8 MB. Leftover files are cleared on the next visit.
+
+**Resume.** Resume works within a session: if the connection drops, both sides keep the transfer as `paused`. When the link reopens, the sender sends `meta` again with the same `tid`. The receiver answers `accept` with its byte offset, without asking the user again. Resume after a page reload is not implemented, because the sender loses access to the file.
+
+**Route label.** `lan` = local host with remote host, or a peer-reflexive private address. `direct` = any other non-relay path. `relay` = either side relay. Labels: "Direct · same Wi-Fi", "Direct", "Via relay". The label is re-read every 4 s while the link is open.
+
+**Pairing SAS.** 6 digits: the first 4 bytes of SHA-256(`softdrop/sas\n` + the two public keys sorted and joined by `\n`), mod 10^6. A peer is stored as trusted only after the user taps "They match".
+
+**Testing switch.** `?relay=1` in the page URL forces `iceTransportPolicy: 'relay'` for that device.

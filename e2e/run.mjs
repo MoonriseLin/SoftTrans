@@ -1,0 +1,200 @@
+// End-to-end check: two isolated browser profiles, real server, real WebRTC.
+// Local:      npm i && npx playwright-core install chromium-headless-shell && node run.mjs
+// Production: BASE=https://mio.pantsu.uk:8443 node run.mjs
+// Via TURN:   QUERY='?relay=1' WANT_ROUTE=relay WANT_LABEL='Via relay' BASE=... node run.mjs
+import { chromium } from 'playwright-core';
+import { spawn } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
+import fs from 'node:fs';
+
+const BASE = process.env.BASE || 'http://127.0.0.1:18480';
+let srv = null;
+if (!process.env.BASE) {
+  srv = spawn('node', [new URL('../server/src/index.js', import.meta.url).pathname], { env: { ...process.env, PORT: '18480' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  srv.stdout.on('data', (d) => process.env.V && process.stdout.write('[srv] ' + d));
+  srv.stderr.on('data', (d) => process.stdout.write('[srv!] ' + d));
+  await new Promise((r) => setTimeout(r, 700));
+}
+
+const browser = await chromium.launch({ args: ['--disable-features=WebRtcHideLocalIpsWithMdns', ...(process.env.ARGS ? process.env.ARGS.split(' ') : [])] });
+const errors = [];
+async function open(label) {
+  const ctx = await browser.newContext({ acceptDownloads: true });
+  const page = await ctx.newPage();
+  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${label}] ${m.text()} @ ${m.location().url}`); });
+  page.on('requestfailed', (r) => errors.push(`[${label}] requestfailed ${r.url()} ${r.failure()?.errorText}`));
+  page.on('pageerror', (e) => errors.push(`[${label}] pageerror ${e.message}`));
+  await page.goto(BASE + '/' + (process.env.QUERY || ''));
+  await page.waitForFunction(() => window.softdrop && window.softdrop.sig.state === 'open', null, { timeout: 15000 });
+  return page;
+}
+const step = (s) => console.log('•', s);
+let failed = false;
+const check = (cond, msg) => { console.log(cond ? '  ✓' : '  ✗', msg); if (!cond) failed = true; };
+
+try {
+  const a = await open('A');
+  const b = await open('B');
+  const idA = await a.evaluate(() => softdrop.me.id);
+  const idB = await b.evaluate(() => softdrop.me.id);
+  step('presence');
+  await a.waitForSelector(`.device[data-id="${idB}"]`, { timeout: 5000 });
+  await b.waitForSelector(`.device[data-id="${idA}"]`, { timeout: 5000 });
+  check(true, 'both devices appear on each other\'s radar');
+
+  step('text transfer');
+  await a.click(`.device[data-id="${idB}"]`);
+  await a.waitForFunction((id) => softdrop.peers.links.get(id)?.state === 'open', idB, { timeout: 15000 });
+  const route = await a.evaluate((id) => softdrop.peers.links.get(id).route, idB);
+  check(route === (process.env.WANT_ROUTE || 'lan'), `route detected as ${route}`);
+  const toText = await a.textContent('#to');
+  check(toText.includes(process.env.WANT_LABEL || 'Direct · same Wi-Fi'), `send card shows "${toText.trim()}"`);
+  await a.fill('#text', 'Meet at the east gate at 6 🌸');
+  await a.click('#send');
+  await b.waitForSelector('[data-act="accept"]', { timeout: 5000 });
+  check((await b.title()).startsWith('(1)'), 'receiver title shows pending count');
+  await b.click('[data-act="accept"]');
+  await b.waitForSelector('.preview', { timeout: 5000 });
+  check((await b.textContent('.preview')) === 'Meet at the east gate at 6 🌸', 'receiver shows the text');
+  await a.waitForFunction(() => document.querySelector('.done')?.textContent.includes('Sent'), null, { timeout: 5000 });
+  check(true, 'sender shows Sent');
+
+  step('decline');
+  await a.fill('#text', 'nope');
+  await a.click('#send');
+  await b.waitForSelector('[data-act="decline"]');
+  await b.click('[data-act="decline"]');
+  await a.waitForFunction(() => document.querySelector('.list .item .muted')?.textContent === 'Declined', null, { timeout: 5000 });
+  check(true, 'sender sees Declined');
+
+  for (const size of [0, 70000, 12 * 1024 * 1024 + 7]) {
+    step(`file transfer, ${size} bytes`);
+    const data = randomBytes(size);
+    const want = createHash('sha256').update(data).digest('hex');
+    await a.setInputFiles('#fileInput', { name: `blob-${size}.bin`, mimeType: 'application/octet-stream', buffer: data });
+    await a.click('#send');
+    await b.waitForSelector('[data-act="accept"]', { timeout: 5000 });
+    const t0 = Date.now();
+    await b.click('[data-act="accept"]');
+    await b.waitForFunction((n) => [...softdrop.engine.all.values()].some((t) => t.name === n && t.status === 'done'), `blob-${size}.bin`, { timeout: 60000 });
+    const secs = (Date.now() - t0) / 1000;
+    const got = await b.evaluate(async (n) => {
+      const t = [...softdrop.engine.all.values()].find((x) => x.name === n);
+      const buf = new Uint8Array(await t.file.arrayBuffer());
+      const h = await crypto.subtle.digest('SHA-256', buf);
+      return { hex: Array.from(new Uint8Array(h), (x) => x.toString(16).padStart(2, '0')).join(''), size: buf.length };
+    }, `blob-${size}.bin`);
+    check(got.hex === want && got.size === size, `received bytes match (${(size / 1e6 / secs).toFixed(1)} MB/s)`);
+    const [dl] = await Promise.all([b.waitForEvent('download'), b.click(`.item:has-text("blob-${size}.bin") [data-act="save"]`)]);
+    const p = await dl.path();
+    check(fs.statSync(p).size === size, 'Save downloads the file');
+  }
+
+  step('cancel mid-transfer');
+  const big = randomBytes(40 * 1024 * 1024);
+  await a.setInputFiles('#fileInput', { name: 'big.bin', mimeType: 'application/octet-stream', buffer: big });
+  await a.click('#send');
+  await b.waitForSelector('[data-act="accept"]');
+  await b.click('[data-act="accept"]');
+  await a.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'big.bin' && t.done > 0), null, { timeout: 10000 });
+  await a.click('.item:has-text("big.bin") [data-act="cancel"]');
+  await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'big.bin' && t.status === 'canceled'), null, { timeout: 5000 });
+  check(true, 'receiver sees the cancel');
+
+  step('pairing with SAS');
+  await a.click('#codeBtn');
+  await a.waitForSelector('#pairSub .code');
+  const code = (await a.textContent('#pairSub .code')).replace(/\D/g, '');
+  await b.fill('#pairInput', code);
+  await b.click('#pairBtn');
+  await a.waitForSelector('#sasDialog[open]');
+  await b.waitForSelector('#sasDialog[open]');
+  const sasA = await a.textContent('#sasCode');
+  const sasB = await b.textContent('#sasCode');
+  check(sasA === sasB && /^\d{3} \d{3}$/.test(sasA), `both show the same SAS ${sasA}`);
+  await a.click('#sasDialog button[value="yes"]');
+  await b.click('#sasDialog button[value="yes"]');
+  await a.waitForFunction((id) => softdrop.me.isTrusted(id), idB);
+  await b.waitForFunction((id) => softdrop.me.isTrusted(id), idA);
+  check(await a.isVisible(`.device[data-id="${idB}"] .badge`), 'paired badge on the radar');
+  await b.fill('#pairInput', code);
+  await b.click('#pairBtn');
+  await b.waitForFunction(() => /did not work/.test(document.getElementById('pairMsg').textContent));
+  check(true, 'code is single use');
+
+  step('reload keeps identity and trust');
+  await b.reload();
+  await b.waitForFunction(() => window.softdrop && softdrop.sig.state === 'open');
+  check((await b.evaluate(() => softdrop.me.id)) === idB, 'same device id after reload');
+  check(await b.evaluate((id) => softdrop.me.isTrusted(id), idA), 'still paired after reload');
+  await b.waitForSelector(`.device[data-id="${idA}"]`);
+
+  step('transfer after the receiver reloaded (fresh connection)');
+  await a.fill('#text', 'after reload');
+  await a.click('#send');
+  await b.waitForSelector('[data-act="accept"]', { timeout: 20000 });
+  await b.click('[data-act="accept"]');
+  await b.waitForSelector('.preview');
+  check((await b.textContent('.preview')) === 'after reload', 'text arrives on the new connection');
+
+  step('activity list');
+  const ids = await a.$$eval('.list .item', (els) => els.map((e) => e.dataset.id));
+  check(ids.length === new Set(ids).size && ids.length === 7, `sender lists each transfer once (${ids.length} items)`);
+
+  step('language');
+  const langOf = (p) => p.evaluate(() => ({ html: document.documentElement.lang, send: document.getElementById('send').textContent, nearby: document.getElementById('nearbyTitle').textContent, ph: document.getElementById('text').placeholder, stored: localStorage.getItem('softdrop-lang') }));
+  check((await langOf(a)).html === 'en', 'starts in English for an English browser');
+  await a.selectOption('#langSel', 'ja');
+  let L = await langOf(a);
+  check(L.html === 'ja' && L.send === '送信' && L.nearby === '近くのデバイス' && L.ph.includes('ドロップ'), `Japanese applied (${L.nearby} / ${L.send})`);
+  check((await a.textContent('#to')).includes('直接 · 同じ Wi-Fi'), 'route label translated');
+  check((await a.textContent('.list .item .done')).includes('送信しました'), 'activity list translated');
+  await a.reload();
+  await a.waitForFunction(() => window.softdrop && softdrop.sig.state === 'open');
+  L = await langOf(a);
+  check(L.html === 'ja' && L.stored === 'ja' && (await a.inputValue('#langSel')) === 'ja', 'Japanese remembered after reload');
+  await a.selectOption('#langSel', 'zh-Hant');
+  L = await langOf(a);
+  check(L.html === 'zh-Hant' && L.send === '傳送' && L.nearby === '附近', `Traditional Chinese applied (${L.send})`);
+  await a.selectOption('#langSel', 'zh');
+  L = await langOf(a);
+  check(L.html === 'zh-Hans' && L.send === '发送', `Simplified Chinese applied (${L.send})`);
+  const ctxJa = await browser.newContext({ locale: 'ja-JP' });
+  const pj = await ctxJa.newPage();
+  await pj.goto(BASE + '/');
+  await pj.waitForFunction(() => window.softdrop);
+  check((await pj.evaluate(() => document.documentElement.lang)) === 'ja', 'first visit follows a Japanese browser');
+  const ctxTw = await browser.newContext({ locale: 'zh-TW' });
+  const pt = await ctxTw.newPage();
+  await pt.goto(BASE + '/');
+  await pt.waitForFunction(() => window.softdrop);
+  check((await pt.evaluate(() => document.documentElement.lang)) === 'zh-Hant', 'first visit follows a zh-TW browser');
+  if (process.env.SHOT) await pj.screenshot({ path: process.env.SHOT + '-ja.png', fullPage: true });
+  await ctxJa.close();
+  await ctxTw.close();
+  await a.selectOption('#langSel', 'en');
+
+  step('theme toggle');
+  await a.click('#themeBtn');
+  check((await a.getAttribute('html', 'data-theme')) === 'light', 'light');
+  await a.click('#themeBtn');
+  check((await a.getAttribute('html', 'data-theme')) === 'dark', 'dark');
+
+  if (process.env.SHOT) {
+    await a.setViewportSize({ width: 390, height: 1300 });
+    await a.screenshot({ path: process.env.SHOT + '-a-dark.png', fullPage: true });
+    await a.click('#themeBtn');
+    await b.setViewportSize({ width: 390, height: 1300 });
+    await b.screenshot({ path: process.env.SHOT + '-b-system.png', fullPage: true });
+  }
+} catch (e) {
+  failed = true;
+  console.log('✗ exception:', e.message.split('\n').slice(0, 4).join('\n'));
+} finally {
+  const relevant = errors.filter((e) => !/fonts\.g/.test(e));
+  if (relevant.length) console.log('console:\n  ' + relevant.slice(0, 20).join('\n  '));
+  await browser.close();
+  if (srv) srv.kill();
+  console.log(failed ? 'FAILED' : 'ALL PASSED');
+  process.exit(failed ? 1 : 0);
+}

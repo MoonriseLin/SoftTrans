@@ -1,0 +1,8 @@
+{
+  "name": "softdrop-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Two-browser end-to-end test. Downloads a headless Chromium; not needed to run Softdrop.",
+  "scripts": { "test": "node run.mjs" },
+  "devDependencies": { "playwright-core": "^1.64.1" }
+}

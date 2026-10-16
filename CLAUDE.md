@@ -14,13 +14,21 @@ Send files and text between devices on the same Wi-Fi, for example phone to comp
 
 ## Current status
 
-`prototype/index.html` is a single-file front-end prototype. Devices, transfers and pairing are simulated. It is the visual source of truth. Nothing real is connected yet: no WebRTC, no server.
+Build steps 1–5 and 7 are working, and step 6 is partly done. The app is deployed at **https://mio.pantsu.uk:8443** (step 8, minus testing on real phones and real networks).
+
+- `server/`: signaling server in plain JavaScript (ESM) on Node 20 with `ws`. No build step. `npm test` runs the hub unit tests.
+- `web/`: the live app, ported from the prototype. It uses no-build ES modules and serves under a strict CSP, so it has no inline scripts or styles.
+- `e2e/run.mjs`: a two-browser Playwright test covering presence, text and file transfer, hash check, decline, cancel, pairing with SAS, and reload. It runs locally or against production, with an optional forced relay.
+- `deploy/`: nginx, systemd and coturn configs, plus `install.sh`.
+- `prototype/index.html` is still the visual reference. It is no longer the app.
+
+Not done yet: resume after a page reload, tests on real phones and routers (iOS Safari especially), and auto-accept for paired devices. Signaling language decision: plain JS on Node.
 
 Read these before building:
 
 - `docs/design-plan.md` for layout and look.
-- `docs/protocol-draft.md` for the signaling and data-channel message formats (a draft, not final).
-- `docs/deploy-notes.md` for the VPS setup and coturn config.
+- `docs/protocol-draft.md` for the message formats. The "As built" section describes the current behavior.
+- `docs/deploy-notes.md` for the live deployment and the coturn config.
 
 ## Architecture
 
@@ -48,6 +56,7 @@ Device grouping: the signaling server groups connections that share the same pub
 - **Motion:** spring-like easing (`cubic-bezier(.22,1,.36,1)`), 250–400 ms, nothing that snaps. Slow ripple on the radar, a gentle "breathing" glow on the drop zone. Respect `prefers-reduced-motion`.
 - **Route label on every transfer:** "Direct · same Wi-Fi" (sage) or "Via relay" (peach). Relay devices get a dashed ring on the radar. This tells the user the LAN-first design is working and explains slowness.
 - **Theme:** follows the system by default, with a manual system/light/dark toggle.
+- **Languages:** English, Simplified Chinese, Traditional Chinese and Japanese, in `web/js/i18n.js`. The first visit follows the browser language, and the choice from the header picker is remembered in `localStorage` (`softdrop-lang`). Add every new UI string to all four dictionaries. Use `data-i18n` / `data-i18n-attr` in the HTML and `t()` in JS. Errors are stored as keys (`err.*`) and translated when shown.
 
 ## Build order
 
@@ -86,8 +95,7 @@ Replace the simulated parts of the prototype one step at a time. Keep the UI wor
 ## Open questions
 
 - Final product name and domain.
-- VPS provider, OS and region. The user is in Tokyo, so a Japan or nearby region keeps relay latency low.
-- Signaling server language. TypeScript on Node with the `ws` library is a sensible default. Go is a good alternative. Not decided.
+- The VPS is `mio.pantsu.uk` (Debian 13). Its region and relay latency from Tokyo have not been measured yet.
 - Whether to add a native iOS app later (needs the paid Apple Developer account).
 - Accounts: none planned. Identity is per device.
 

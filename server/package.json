@@ -1,0 +1,18 @@
+{
+  "name": "softdrop-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Softdrop signaling server: presence, grouping by public IP, pairing codes, signed signaling relay, TURN credentials.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

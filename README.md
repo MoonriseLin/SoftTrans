@@ -1,30 +1,40 @@
-# Softdrop project bundle
+# Softdrop
 
-Everything needed to start building Softdrop with Claude Code.
+Send files and text between devices from a browser page. Transfers go over the same Wi-Fi when possible, and they are end-to-end encrypted.
+
+Live: **https://mio.pantsu.uk:8443**. Open it on two devices.
 
 ```
-softdrop/
-├── CLAUDE.md                 Project brief. Claude Code reads this automatically.
-├── README.md                 This file.
-├── prototype/
-│   └── index.html            Front-end prototype (simulated devices). Open it in a browser.
-└── docs/
-    ├── design-plan.md        Layout, look and wording decisions.
-    ├── protocol-draft.md     Draft signaling and data-channel messages.
-    └── deploy-notes.md       VPS setup notes, coturn config, ports.
+server/      signaling server (Node 20, ws): presence, IP grouping, pairing codes, signed signaling relay, TURN creds
+web/         the app (no build step): index.html, app.css, js/*.js, service worker, manifest, icons
+e2e/         two-browser end-to-end test (Playwright)
+deploy/      nginx site, systemd unit, coturn config, install script
+prototype/   original front-end prototype (visual reference)
+docs/        design plan, protocol (with "As built" notes), deploy notes
 ```
 
-## Start
+## Run locally
 
-1. Unzip, then `cd softdrop`.
-2. Open `prototype/index.html` in a browser to see the target look. Try the theme button, drop a file, send text, and use "Preview another incoming transfer".
-3. Run `claude` in this folder. It loads `CLAUDE.md` for context.
-4. A good first prompt:
+```sh
+cd server && npm install && npm start      # http://127.0.0.1:8480 (localhost counts as a secure origin)
+npm test                                   # hub unit tests
+```
 
-   > Read CLAUDE.md and the docs. Start with build step 1: a signaling server in TypeScript with `ws` that groups devices by public IP and relays offer, answer and ICE messages, following docs/protocol-draft.md. Add a minimal test client. Do not touch the prototype yet.
+Two browser profiles (or a normal window and a private window) on the same machine see each other as "nearby". Without `TURN_HOST` and `TURN_SECRET` set, only direct paths work.
 
-5. Then, step by step: wire the prototype to the real server and WebRTC, then add the transfer protocol, pairing and identity.
+## Deploy (on the VPS)
 
-## The planning doc
+```sh
+sh deploy/install.sh   # copies to /opt/softdrop, installs deps, restarts softdrop.service
+```
 
-The same design plan lives as a Claude Doc from the original conversation. It was the source for `docs/design-plan.md`.
+See `docs/deploy-notes.md` for nginx, coturn and certificates.
+
+## Test end to end
+
+```sh
+cd e2e && npm install && npx playwright-core install chromium-headless-shell
+node run.mjs                                            # starts a local server
+BASE=https://mio.pantsu.uk:8443 node run.mjs            # against production
+QUERY='?relay=1' WANT_ROUTE=relay WANT_LABEL='Via relay' BASE=https://mio.pantsu.uk:8443 node run.mjs
+```
