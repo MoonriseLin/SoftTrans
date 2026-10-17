@@ -20,7 +20,7 @@ Build steps 1–5 and 7 are working, and step 6 is partly done. The app is deplo
 - `web/`: the live app, ported from the prototype. It uses no-build ES modules and serves under a strict CSP, so it has no inline scripts or styles.
 - `e2e/run.mjs`: a two-browser Playwright test covering presence, text and file transfer, hash check, decline, cancel, pairing with SAS, and reload. It runs locally or against production, with an optional forced relay.
 - `deploy/`: nginx, systemd and coturn configs, `install.sh`, and `logs.sh` to follow the logs.
-- Debugging: `?debug=1` on the page shows a log panel and streams page logs to the server journal. Use `dlog()` from `web/js/log.js` for new client events. Server events go through `log()` in `server/src/log.js`. Never log file contents, keys or full pairing codes.
+- Debugging: debug mode is currently on by default (`DEBUG_DEFAULT` in `web/js/log.js`; set it to false after testing). `?debug=0` or `?debug=1` overrides it per browser. Debug mode shows a log panel and streams page logs to the server journal. Use `dlog()` from `web/js/log.js` for new client events. Server events go through `log()` in `server/src/log.js`. Never log file contents, keys or full pairing codes.
 - `prototype/index.html` is still the visual reference. It is no longer the app.
 
 Not done yet: resume after a page reload, tests on real phones and routers (iOS Safari especially), and auto-accept for paired devices. Signaling language decision: plain JS on Node.

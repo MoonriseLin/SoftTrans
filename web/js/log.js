@@ -1,16 +1,20 @@
-// Debug log. Off by default. `?debug=1` turns it on for this browser (remembered),
-// `?debug=0` turns it off. When on, lines go to the console, to the in-page log
-// panel, and to the server log (so phones can be followed without a console).
+// Debug log. On by default while the app is being tested (DEBUG_DEFAULT below).
+// `?debug=0` turns it off for this browser (remembered), `?debug=1` back on.
+// When on, lines go to the console, to the in-page log panel, and to the server
+// log (so phones can be followed without a console).
 // Lines describe connections and transfers; they never contain file contents.
 
 const KEY = 'softdrop-debug';
 const MAX = 800;
+// Set to false when testing is over: then only `?debug=1` turns it on.
+const DEBUG_DEFAULT = true;
 
-let enabled = false;
+let enabled = DEBUG_DEFAULT;
 try {
   const q = new URLSearchParams(location.search).get('debug');
   if (q === '1' || q === '0') localStorage.setItem(KEY, q);
-  enabled = localStorage.getItem(KEY) === '1';
+  const saved = localStorage.getItem(KEY);
+  if (saved === '1' || saved === '0') enabled = saved === '1';
 } catch {}
 
 const lines = [];
