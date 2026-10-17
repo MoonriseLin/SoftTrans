@@ -1,0 +1,13 @@
+[Unit]
+Description=Rebuild the Shadowrocket rules served at /rules/ (upstream + SoftTrans fixes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/softdrop/shadowrocket/build.sh /var/www/softdrop-rules/sr_cnip_ad.conf
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/www/softdrop-rules

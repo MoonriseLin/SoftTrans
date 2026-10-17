@@ -10,6 +10,10 @@
 - Health: `curl https://mio.pantsu.uk/healthz` returns counts only, no IDs.
 - Firewall: the host has no nftables or iptables rules. If the provider has a cloud firewall, open 80/tcp, 443/tcp, 8443/tcp (redirect only), 3478/udp+tcp, 5349/tcp and 49160–49999/udp.
 
+### Shadowrocket rules
+
+`https://mio.pantsu.uk/rules/sr_cnip_ad.conf` is served by nginx from `/var/www/softdrop-rules/`. It is rebuilt daily at 08:30 UTC by `softdrop-rules.timer` (`shadowrocket/build.sh`). See `shadowrocket/README.md`. If the upstream download fails or looks wrong, the old file stays in place. Check with `journalctl -u softdrop-rules`.
+
 ### Logs
 
 - Follow everything live: `sh deploy/logs.sh` (or `server`, `turn`, `dump` as the argument). It wraps `journalctl -u softdrop -u coturn`.
