@@ -279,6 +279,7 @@ async function main() {
     let extra = '';
     if (link && link.state === 'connecting') extra = `<span class="speed">${esc(t('connecting'))}</span>`;
     else if (link && link.state === 'failed') extra = `<span class="err">${esc(tr(link.lastError || 'err.connect'))}</span>`;
+    else if (link && link.state === 'open' && link.farHairpin) extra = `<span class="hint">${esc(t('hint.vpn'))}</span>`;
     $('to').innerHTML = `<span class="k">${esc(t('to.label'))}</span><strong>${esc(devLabel(p))}</strong>${routeChip(routeOf(p.id), p.via)}${extra}`;
   }
   peers.addEventListener('link', (e) => {

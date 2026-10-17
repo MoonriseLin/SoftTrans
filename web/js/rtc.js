@@ -10,6 +10,8 @@ import { dlog } from './log.js';
 const CONNECT_TIMEOUT_MS = 20000;
 const DISCONNECT_GRACE_MS = 4000;
 const CLOCK_SKEW_MS = 10 * 60 * 1000;
+// A hairpin through a home router is a few ms; through a VPN exit it is far more.
+const HAIRPIN_LAN_RTT_MS = 30;
 // `?relay=1` forces TURN for this device's connections: handy for testing the relay path.
 const FORCE_RELAY = new URLSearchParams(location.search).get('relay') === '1';
 
@@ -65,12 +67,15 @@ export async function readRoute(pc, ctx = {}) {
   else if (lt === 'host' && (rtHost || (rt === 'prflx' && isPrivate(raddr)))) route = 'lan';
   else if (lt === 'prflx' && rt === 'host' && isPrivate(laddr)) route = 'lan';
   // Hairpin: when local addresses can't be resolved (mDNS blocked), ICE often connects
-  // through the router's public address. If both sides share that public IP, the packets
-  // turn around inside the same router and never leave the local network.
+  // through the shared public address. If both sides share it, packets turn around at
+  // that NAT. That is the home router only if the round trip is short: when both devices
+  // sit behind the same VPN or proxy exit, the "shared public IP" is a server far away
+  // (seen in testing: 155-233 ms), and calling that "same Wi-Fi" would be wrong.
+  const rttMs = pair.currentRoundTripTime != null ? pair.currentRoundTripTime * 1000 : null;
   let hairpin = false;
   if (route === 'direct' && ['srflx', 'prflx'].includes(lt) && ['srflx', 'prflx'].includes(rt) && ctx.localPublic && ctx.remotePublic) {
     for (const ip of ctx.localPublic) if (ctx.remotePublic.has(ip)) hairpin = true;
-    if (hairpin) route = 'lan';
+    if (hairpin && rttMs != null && rttMs <= HAIRPIN_LAN_RTT_MS) route = 'lan';
   }
 
   let remoteFp = null;
@@ -265,7 +270,7 @@ export class PeerLink extends EventTarget {
     if (this.pc !== pc) return;
     // Defense in depth: the certificate DTLS actually used must be one the signed SDP named.
     dlog('rtc', 'channel open', {
-      peer: this.short, route: info.route + (info.hairpin ? ' (hairpin via router)' : ''), pair: `${info.local}/${info.remote}`, proto: info.protocol, relayProto: info.relayProto,
+      peer: this.short, route: info.route + (info.hairpin ? (info.route === 'lan' ? ' (hairpin via home router)' : ' (hairpin via a far NAT: VPN or proxy exit?)') : ''), pair: `${info.local}/${info.remote}`, proto: info.protocol, relayProto: info.relayProto,
       local: info.localAddr, remote: info.remoteAddr, rtt: info.rtt != null ? info.rtt + 'ms' : undefined,
       maxMsg: pc.sctp && pc.sctp.maxMessageSize,
       dtls: !info.remoteFp ? 'fingerprint not in stats (skipped)' : this.pinned.has(info.remoteFp) ? 'pinned fingerprint matches' : 'MISMATCH',
@@ -276,6 +281,7 @@ export class PeerLink extends EventTarget {
     }
     clearTimeout(this.connectTimer);
     this.restarts = 0;
+    this.farHairpin = !!(info.hairpin && info.route !== 'lan');
     this.setRoute(info.route);
     this.setState('open');
     clearInterval(this.routeTimer);
@@ -284,9 +290,14 @@ export class PeerLink extends EventTarget {
       const r = await readRoute(pc, this).catch(() => null);
       if (r && r.route) {
         if (r.route !== this.route || `${r.localAddr}>${r.remoteAddr}` !== this.lastPair) {
-          dlog('rtc', 'selected pair changed', { peer: this.short, route: r.route + (r.hairpin ? ' (hairpin via router)' : ''), pair: `${r.local}/${r.remote}`, local: r.localAddr, remote: r.remoteAddr, rtt: r.rtt });
+          dlog('rtc', 'selected pair changed', { peer: this.short, route: r.route + (r.hairpin ? (r.route === 'lan' ? ' (hairpin via home router)' : ' (hairpin via a far NAT: VPN or proxy exit?)') : ''), pair: `${r.local}/${r.remote}`, local: r.localAddr, remote: r.remoteAddr, rtt: r.rtt });
         }
         this.lastPair = `${r.localAddr}>${r.remoteAddr}`;
+        const far = !!(r.hairpin && r.route !== 'lan');
+        if (far !== this.farHairpin) {
+          this.farHairpin = far;
+          this.dispatchEvent(new CustomEvent('route', { detail: r.route }));
+        }
         this.setRoute(r.route);
       }
     };

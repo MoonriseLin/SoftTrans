@@ -144,6 +144,7 @@ const en = {
   'debug.clear': 'Clear',
   'debug.hide': 'Hide',
   'debug.show': 'Show',
+  'hint.vpn': 'Slow path: both devices seem to go through the same VPN or proxy. Let this site and your local network bypass it for full speed.',
 };
 
 const zh = {
@@ -279,6 +280,7 @@ const zh = {
   'debug.clear': '清空',
   'debug.hide': '收起',
   'debug.show': '展开',
+  'hint.vpn': '路线较慢：两台设备似乎都经过同一个 VPN 或代理。让本网站和局域网绕过它，就能全速传输。',
 };
 
 const zhHant = {
@@ -414,6 +416,7 @@ const zhHant = {
   'debug.clear': '清除',
   'debug.hide': '收起',
   'debug.show': '展開',
+  'hint.vpn': '路線較慢：兩台裝置似乎都經過同一個 VPN 或代理。讓本網站和區域網路繞過它，就能全速傳輸。',
 };
 
 const ja = {
@@ -549,6 +552,7 @@ const ja = {
   'debug.clear': '消去',
   'debug.hide': '隠す',
   'debug.show': '表示',
+  'hint.vpn': '遅い経路です：両方のデバイスが同じ VPN かプロキシを通っているようです。このサイトとローカルネットワークを VPN の対象外にすると、全速で送れます。',
 };
 
 const DICT = { en, zh, 'zh-Hant': zhHant, ja };

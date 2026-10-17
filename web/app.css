@@ -359,3 +359,4 @@ textarea::placeholder { color: var(--muted); }
   background: var(--surface-2); font: 11px/1.45 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
 }
+.to .hint { flex-basis: 100%; font-size: 13px; line-height: 1.45; color: var(--accent-ink); }
