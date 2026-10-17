@@ -18,6 +18,18 @@
 - **Page debug mode:** on by default for every visitor while testing (`DEBUG_DEFAULT` in `web/js/log.js`). `?debug=0` turns it off for one browser and `?debug=1` turns it back on; both are remembered. The page then shows a debug log panel and streams its lines to the server log as `client dev=… line=…`. It logs ICE candidates, connection states, the selected candidate pair with addresses and RTT, the DTLS fingerprint check, and transfer steps with speeds and hash results. This is the way to follow a phone, which has no console.
 - coturn runs with `verbose`. Each relay session logs its allocation and a closing `usage:` line with packet and byte counts. Remove `verbose` from `/etc/turnserver.conf` when testing is over.
 
+### Field notes: VPNs on the client devices (October 2026)
+
+Real-device tests (iPhone Safari and Windows Chrome on one home Wi-Fi, China Mobile, Beijing):
+
+| Setup | Selected pair | RTT | Speed |
+| --- | --- | --- | --- |
+| No VPN | host/host | 4–8 ms | 56 MB/s |
+| VPN on the PC only | prflx/host (LAN) | 3–4 ms | 43–57 MB/s |
+| VPN on both, DIRECT rule for `mio.pantsu.uk` | prflx/prflx through the VPN exit | 190–211 ms | 0.12 MB/s |
+
+A domain rule only covers traffic to the server (signaling, STUN, TURN). Device-to-device packets go to bare IPs. With mDNS lookups blocked by the VPN, the host path fails, and the peer-to-peer packets leave through the VPN exit and come back in. The fix is on the client: enable "bypass LAN" / "exclude local networks", or add DIRECT rules for `192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`, `169.254.0.0/16` and `224.0.0.0/4` (mDNS uses 224.0.0.251:5353). The page detects this case ("hairpin via a far NAT") and shows a hint. The debug log's `alivePairs` lists every working pair with its RTT, so you can see whether the relay would have been faster.
+
 The notes below are the original generic plan.
 
 

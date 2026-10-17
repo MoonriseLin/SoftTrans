@@ -65,7 +65,9 @@ export async function readRoute(pc, ctx = {}) {
   let route = 'direct';
   if (lt === 'relay' || rt === 'relay') route = 'relay';
   else if (lt === 'host' && (rtHost || (rt === 'prflx' && isPrivate(raddr)))) route = 'lan';
-  else if (lt === 'prflx' && rt === 'host' && isPrivate(laddr)) route = 'lan';
+  // Our side shows up as peer-reflexive (common when a VPN adds interfaces), but we reached
+  // the peer's host candidate: host candidates are only reachable on the local network.
+  else if (lt === 'prflx' && (rtHost || isPrivate(laddr))) route = 'lan';
   // Hairpin: when local addresses can't be resolved (mDNS blocked), ICE often connects
   // through the shared public address. If both sides share it, packets turn around at
   // that NAT. That is the home router only if the round trip is short: when both devices
@@ -83,8 +85,15 @@ export async function readRoute(pc, ctx = {}) {
     const cert = stats.get(transport.remoteCertificateId);
     if (cert && cert.fingerprint) remoteFp = (cert.fingerprintAlgorithm || '').toLowerCase() + ' ' + cert.fingerprint.toUpperCase();
   }
+  // Every pair ICE got an answer on, with its RTT: shows whether another path would be faster.
+  const alive = [];
+  stats.forEach((r) => {
+    if (r.type !== 'candidate-pair' || r.state !== 'succeeded') return;
+    const l = stats.get(r.localCandidateId) || {}, m = stats.get(r.remoteCandidateId) || {};
+    alive.push(`${l.candidateType}/${m.candidateType}${r.currentRoundTripTime != null ? ':' + Math.round(r.currentRoundTripTime * 1000) + 'ms' : ''}${r === pair ? '*' : ''}`);
+  });
   return {
-    route, hairpin, local: lt, remote: rt === 'prflx' && rtHost ? 'prflx=host' : rt, protocol: local.protocol, remoteFp,
+    route, hairpin, alive: alive.join(' ') || 'none', local: lt, remote: rt === 'prflx' && rtHost ? 'prflx=host' : rt, protocol: local.protocol, remoteFp,
     localAddr: laddr && `${laddr}:${local.port}`, remoteAddr: raddr && `${raddr}:${remote.port}`,
     relayProto: local.relayProtocol, rtt: pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : undefined,
     sent: pair.bytesSent, recv: pair.bytesReceived,
@@ -272,7 +281,7 @@ export class PeerLink extends EventTarget {
     dlog('rtc', 'channel open', {
       peer: this.short, route: info.route + (info.hairpin ? (info.route === 'lan' ? ' (hairpin via home router)' : ' (hairpin via a far NAT: VPN or proxy exit?)') : ''), pair: `${info.local}/${info.remote}`, proto: info.protocol, relayProto: info.relayProto,
       local: info.localAddr, remote: info.remoteAddr, rtt: info.rtt != null ? info.rtt + 'ms' : undefined,
-      maxMsg: pc.sctp && pc.sctp.maxMessageSize,
+      maxMsg: pc.sctp && pc.sctp.maxMessageSize, alivePairs: info.alive,
       dtls: !info.remoteFp ? 'fingerprint not in stats (skipped)' : this.pinned.has(info.remoteFp) ? 'pinned fingerprint matches' : 'MISMATCH',
     });
     if (info.remoteFp && this.pinned.size && !this.pinned.has(info.remoteFp)) {
@@ -290,7 +299,7 @@ export class PeerLink extends EventTarget {
       const r = await readRoute(pc, this).catch(() => null);
       if (r && r.route) {
         if (r.route !== this.route || `${r.localAddr}>${r.remoteAddr}` !== this.lastPair) {
-          dlog('rtc', 'selected pair changed', { peer: this.short, route: r.route + (r.hairpin ? (r.route === 'lan' ? ' (hairpin via home router)' : ' (hairpin via a far NAT: VPN or proxy exit?)') : ''), pair: `${r.local}/${r.remote}`, local: r.localAddr, remote: r.remoteAddr, rtt: r.rtt });
+          dlog('rtc', 'selected pair changed', { peer: this.short, route: r.route + (r.hairpin ? (r.route === 'lan' ? ' (hairpin via home router)' : ' (hairpin via a far NAT: VPN or proxy exit?)') : ''), pair: `${r.local}/${r.remote}`, local: r.localAddr, remote: r.remoteAddr, rtt: r.rtt, alivePairs: r.alive });
         }
         this.lastPair = `${r.localAddr}>${r.remoteAddr}`;
         const far = !!(r.hairpin && r.route !== 'lan');
