@@ -31,8 +31,13 @@ Real-device tests (iPhone Safari and Windows Chrome on one home Wi-Fi, China Mob
 | No VPN | host/host | 4–8 ms | 56 MB/s |
 | VPN on the PC only | prflx/host (LAN) | 3–4 ms | 43–57 MB/s |
 | VPN on both, DIRECT rule for `mio.pantsu.uk` | prflx/prflx through the VPN exit | 190–211 ms | 0.12 MB/s |
+| VPN on both, iPhone on the hosted Shadowrocket config | prflx/prflx through the VPN exit | 193–223 ms | 0.08 MB/s |
 
 A domain rule only covers traffic to the server (signaling, STUN, TURN). Device-to-device packets go to bare IPs. With mDNS lookups blocked by the VPN, the host path fails, and the peer-to-peer packets leave through the VPN exit and come back in. The fix is on the client: enable "bypass LAN" / "exclude local networks", or add DIRECT rules for `192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`, `169.254.0.0/16` and `224.0.0.0/4` (mDNS uses 224.0.0.251:5353). The page detects this case ("hairpin via a far NAT") and shows a hint. The debug log's `alivePairs` lists every working pair with its RTT, so you can see whether the relay would have been faster.
+
+With the hosted config, both devices reached the server straight from the home IP (srflx 223.104.40.142 on both, where before it was the VPN exit). So the config loaded and its rules work. The device-to-device checks still came back prflx/prflx at about 200 ms. That means at least one VPN is still tunnelling UDP sent to the home's own public IP (the hairpin path), and the host/host pair never succeeded. A full-tunnel (TUN) VPN on the PC is the likely cause, because the PC's own rules only cover `mio.pantsu.uk`. The next test is the iPhone on the hosted config with the PC VPN off. If that is fast, the PC VPN is the cause; if it is still slow, the iPhone VPN is.
+
+Many reloads in a row also hit coturn's per-user allocation quota (`486 Allocation Quota Reached`). `user-quota` was raised from 12 to 48.
 
 The notes below are the original generic plan.
 
