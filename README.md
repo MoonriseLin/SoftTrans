@@ -113,6 +113,7 @@ There are no accounts, no tracking and no analytics.
 - **Very large files on iPhone** can hit Safari's memory limits.
 - Opening Softdrop in a second tab on the same browser moves the device to the newest tab.
 - Add `?relay=1` to the address to force the relay path, which is useful for testing.
+- Add `?debug=1` to the address to turn on **debug mode**. The page then shows a live log of connection and transfer steps, and sends it to the server log. `?debug=0` turns it off. On the server, `sh deploy/logs.sh` follows the logs.
 
 ---
 

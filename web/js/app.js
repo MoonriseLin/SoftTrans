@@ -2,7 +2,8 @@ import { Identity, idForPub, iconForKind, sasFor } from './identity.js';
 import { Signaling } from './signaling.js';
 import { PeerManager } from './rtc.js';
 import { TransferEngine, isLive } from './transfer.js';
-import { cleanupStorage } from './sinks.js';
+import { cleanupStorage, opfsSupported } from './sinks.js';
+import { dlog, debugOn, onLine, allLines, clearLines, sendRemote } from './log.js';
 import { t, tr, LANGS, getLang, setLang, onLangChange, applyStatic } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
@@ -75,6 +76,7 @@ function notice(html) {
 /* ---------- start ---------- */
 main().catch((e) => {
   console.error(e);
+  dlog('app', 'START FAILED', { err: e.message || String(e) });
   const why = () => esc(tr(e.message) || String(e));
   notice(esc(t('start.fail', { why: '\u0000' })).replace('\u0000', why()));
   $('radarStatus').textContent = t('status.notConnected');
@@ -85,6 +87,11 @@ async function main() {
   if (!window.isSecureContext) throw new Error('start.https');
   const me = await Identity.load();
   cleanupStorage();
+  dlog('app', 'boot', {
+    id: me.id.slice(0, 8), name: me.name, kind: me.kind, lang: getLang(), paired: Object.keys(me.trusted).length,
+    standalone: matchMedia('(display-mode: standalone)').matches || !!navigator.standalone,
+    opfs: opfsSupported(), wakeLock: 'wakeLock' in navigator, ua: navigator.userAgent,
+  });
 
   const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   const sig = new Signaling(me, wsUrl);
@@ -135,6 +142,7 @@ async function main() {
     const prev = presence.get(p.id);
     const peer = { ...prev, ...p, icon: iconForKind(p.kind) };
     presence.set(p.id, peer);
+    if (!prev || prev.via !== p.via || prev.name !== p.name) dlog('app', prev ? 'peer updated' : 'peer appeared', { peer: p.id.slice(0, 8), name: p.name, kind: p.kind, via: p.via, paired: me.isTrusted(p.id) });
     known.set(p.id, peer);
     if (me.isTrusted(p.id) && (me.trusted[p.id].name !== p.name || me.trusted[p.id].kind !== p.kind)) {
       me.trusted[p.id].name = p.name;
@@ -153,6 +161,7 @@ async function main() {
   sig.addEventListener('peer-joined', (e) => addPeer(e.detail.peer));
   sig.addEventListener('peer-updated', (e) => addPeer(e.detail.peer));
   sig.addEventListener('peer-left', (e) => {
+    dlog('app', 'peer gone', { peer: e.detail.id.slice(0, 8) });
     const id = e.detail.id;
     presence.delete(id);
     engine.peerGone(id);
@@ -244,6 +253,7 @@ async function main() {
     const b = e.target.closest('.device');
     if (!b) return;
     selected = b.dataset.id;
+    dlog('app', 'selected', { peer: selected.slice(0, 8), link: peers.links.get(selected)?.state || 'none' });
     // Warm up the connection so the route label is ready and sending starts at once.
     peers.get(selected).ready().catch(() => {});
     renderRadar();
@@ -320,6 +330,7 @@ async function main() {
     if (fs && fs.length) { e.preventDefault(); addFiles(fs); }
   });
   sendBtn.addEventListener('click', () => {
+    dlog('app', 'send clicked', { to: selected && selected.slice(0, 8), files: files.length, text: !!ta.value.trim() });
     if (!selected || !presence.has(selected)) return;
     const text = ta.value.trim();
     // The engine's update event adds each transfer to the list.
@@ -456,6 +467,7 @@ async function main() {
     const t = engine.all.get(b.dataset.id);
     if (!t) return;
     const act = b.dataset.act;
+    dlog('app', 'tap ' + act, { tid: t.tid.slice(0, 8) });
     if (act === 'accept') engine.accept(t);
     else if (act === 'decline') engine.reject(t);
     else if (act === 'cancel') engine.cancel(t);
@@ -486,14 +498,17 @@ async function main() {
     if (busy && !wake && 'wakeLock' in navigator && document.visibilityState === 'visible') {
       try {
         wake = await navigator.wakeLock.request('screen');
+        dlog('app', 'wake lock on');
         wake.addEventListener('release', () => { wake = null; });
       } catch {}
     } else if (!busy && wake) {
       wake.release().catch(() => {});
+      dlog('app', 'wake lock off');
       wake = null;
     }
   }
   document.addEventListener('visibilitychange', () => {
+    dlog('app', 'page ' + document.visibilityState, { ws: sig.state, busy: engine.busy });
     if (document.visibilityState === 'visible') {
       sig.kick();
       keepAwake();
@@ -590,6 +605,7 @@ async function main() {
     $('sasCode').textContent = sas.slice(0, 3) + ' ' + sas.slice(3);
     dialog.returnValue = '';
     dialog.onclose = async () => {
+      dlog('app', 'pair dialog answered', { peer: p.id.slice(0, 8), answer: dialog.returnValue || 'dismissed' });
       if (dialog.returnValue === 'yes') {
         await me.trust(p);
         known.set(p.id, { ...p, icon: iconForKind(p.kind) });
@@ -674,8 +690,43 @@ async function main() {
     if (pairMsgState) pairMsg.textContent = t(pairMsgState.key, pairMsgState.vars);
     if (sasPeer) $('sasTitle').textContent = t('sas.title', { name: sasPeer });
   });
+  setupDebugPanel(sig);
   sig.start();
 
   // Handy for debugging from the console. Nothing here leaves the page.
   window.softdrop = { me, sig, peers, engine, presence };
+}
+
+/* ---------- debug log panel (?debug=1) ---------- */
+function setupDebugPanel(sig) {
+  if (!debugOn()) return;
+  const panel = $('debugPanel');
+  const pre = $('debugLines');
+  panel.hidden = false;
+  pre.textContent = allLines().join('\n');
+  let stick = true;
+  pre.addEventListener('scroll', () => { stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8; });
+  onLine((line) => {
+    pre.textContent += (pre.textContent ? '\n' : '') + line;
+    if (pre.textContent.length > 200000) pre.textContent = pre.textContent.slice(-150000);
+    if (stick) pre.scrollTop = pre.scrollHeight;
+  });
+  $('debugCopy').addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    try { await navigator.clipboard.writeText(allLines().join('\n')); b.textContent = t('copied'); } catch { b.textContent = t('copyFail'); }
+    setTimeout(() => { b.textContent = t('debug.copy'); }, 1600);
+  });
+  $('debugClear').addEventListener('click', () => { clearLines(); pre.textContent = ''; });
+  $('debugToggle').addEventListener('click', () => {
+    const hide = !pre.hidden;
+    pre.hidden = hide;
+    $('debugToggle').dataset.i18n = hide ? 'debug.show' : 'debug.hide';
+    applyStatic(panel);
+  });
+  sendRemote((lines) => {
+    if (sig.state !== 'open') return false;
+    sig.raw({ t: 'log', lines });
+    return true;
+  });
+  setTimeout(() => { pre.scrollTop = pre.scrollHeight; }, 0);
 }

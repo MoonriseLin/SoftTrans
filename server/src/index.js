@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Hub } from './hub.js';
 import { groupKey } from './util.js';
+import { log, logLevel } from './log.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const env = process.env;
@@ -25,7 +26,6 @@ const config = {
   turnTtl: Number(env.TURN_TTL || 6 * 3600),
 };
 
-const log = (msg) => console.log(new Date().toISOString(), msg);
 
 const stunUrls = config.turnHost ? [`stun:${config.turnHost}:3478`] : [];
 const turnUrls = config.turnHost && config.turnSecret
@@ -35,7 +35,7 @@ const turnUrls = config.turnHost && config.turnSecret
       `turns:${config.turnHost}:5349?transport=tcp`,
     ]
   : [];
-if (!turnUrls.length) log('TURN not configured (set TURN_HOST and TURN_SECRET). Only direct paths will work.');
+if (!turnUrls.length) log('warn', 'turn.disabled', { why: 'set TURN_HOST and TURN_SECRET; only direct paths will work' });
 
 const hub = new Hub({ turnSecret: config.turnSecret, stunUrls, turnUrls, turnTtl: config.turnTtl, log });
 
@@ -114,6 +114,7 @@ function serveStatic(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  log('debug', 'http', { ip: clientIp(req), method: req.method, url: req.url.slice(0, 200) });
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405).end();
     return;
@@ -144,6 +145,7 @@ server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, 'http://x');
   const origin = req.headers.origin || '';
   if (pathname !== '/ws' || (config.allowedOrigins.length && !config.allowedOrigins.includes(origin))) {
+    log('warn', 'ws.reject', { ip: clientIp(req), path: pathname, origin: origin || 'none' });
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     socket.destroy();
     return;
@@ -161,8 +163,11 @@ server.on('upgrade', (req, socket, head) => {
       if (isBinary) return ws.close(1003, 'text only');
       handlers.message(data.toString());
     });
-    ws.on('close', handlers.close);
-    ws.on('error', () => ws.terminate());
+    ws.on('close', (code, reason) => handlers.close(code, reason.toString()));
+    ws.on('error', (e) => {
+      log('warn', 'ws.error', { ip, err: e.message });
+      ws.terminate();
+    });
   });
 });
 
@@ -170,6 +175,7 @@ server.on('upgrade', (req, socket, head) => {
 const heartbeat = setInterval(() => {
   for (const ws of wss.clients) {
     if (!ws.isAlive) {
+      log('info', 'ws.timeout', { why: 'no pong in 25s' });
       ws.terminate();
       continue;
     }
@@ -179,7 +185,10 @@ const heartbeat = setInterval(() => {
 }, 25_000);
 
 server.listen(config.port, config.host, () => {
-  log(`softdrop listening on http://${config.host}:${config.port} (web root ${config.webRoot})`);
+  log('info', 'start', {
+    listen: `http://${config.host}:${config.port}`, webRoot: config.webRoot, logLevel,
+    origins: config.allowedOrigins.join(',') || 'any', turn: turnUrls.length ? config.turnHost : 'off',
+  });
 });
 
 function shutdown() {
@@ -189,5 +198,12 @@ function shutdown() {
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();
 }
+// `systemctl kill -s USR2 softdrop` prints who is online and who sees whom.
+process.on('SIGUSR2', () => {
+  const rows = hub.dump();
+  log('info', 'dump', { devices: rows.length, ...hub.stats() });
+  for (const r of rows) log('info', 'dump.device', r);
+});
+
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

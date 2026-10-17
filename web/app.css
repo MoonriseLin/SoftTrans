@@ -347,3 +347,15 @@ textarea::placeholder { color: var(--muted); }
   .lang-ico { left: 11px; }
 }
 :lang(zh-Hant) { --font-body: 'Figtree', 'PingFang TC', 'Hiragino Sans CNS', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif; }
+
+/* Debug log panel (?debug=1) */
+.debug { padding: 14px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); min-width: 0; }
+.debug-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.debug-head strong { font-size: 14px; }
+.debug-note { font-size: 12px; color: var(--muted); flex: 1 1 160px; }
+.debug-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.debug pre {
+  margin: 10px 0 0; padding: 10px 12px; max-height: 300px; overflow: auto; border-radius: 14px;
+  background: var(--surface-2); font: 11px/1.45 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+}

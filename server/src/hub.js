@@ -26,7 +26,7 @@ export class Hub {
    * @param {string[]} [opts.stunUrls]
    * @param {string[]} [opts.turnUrls]
    * @param {number} [opts.turnTtl]     seconds
-   * @param {(msg: string) => void} [opts.log]
+   * @param {(level: string, event: string, fields?: object) => void} [opts.log]
    */
   constructor(opts = {}) {
     this.opts = { turnTtl: 6 * 3600, stunUrls: [], turnUrls: [], log: () => {}, ...opts };
@@ -41,6 +41,11 @@ export class Hub {
     this.helloLimit = new RateLimiter(60, 60_000);
     this.sweeper = setInterval(() => this.sweep(), 30_000);
     this.sweeper.unref?.();
+    this.nextConn = 1;
+  }
+
+  log(level, event, fields) {
+    this.opts.log(level, event, fields);
   }
 
   close() {
@@ -52,16 +57,23 @@ export class Hub {
    * Returns handlers the transport calls on message and close.
    */
   connect(conn, ip, group) {
-    const c = new Client(conn, ip, group);
+    const c = new Client(conn, ip, group, this, this.nextConn++);
+    this.log('info', 'ws.open', { conn: c.cid, ip, group });
     c.nonce = nonce();
     c.send({ t: 'challenge', nonce: c.nonce });
     c.helloTimer = setTimeout(() => {
-      if (!c.id) conn.close(4000, 'no hello');
+      if (!c.id) {
+        this.log('warn', 'hello.timeout', c.tag());
+        conn.close(4000, 'no hello');
+      }
     }, HELLO_TIMEOUT_MS);
     c.helloTimer.unref?.();
     return {
-      message: (raw) => this.onMessage(c, raw).catch((e) => this.opts.log('handler error: ' + e.message)),
-      close: () => this.onClose(c),
+      message: (raw) => this.onMessage(c, raw).catch((e) => this.log('error', 'handler.error', { ...c.tag(), err: e.message })),
+      close: (code, reason) => {
+        if (!c.closed) this.log('info', 'ws.close', { ...c.tag(), code, reason, secs: Math.round((Date.now() - c.t0) / 1000) });
+        this.onClose(c);
+      },
     };
   }
 
@@ -78,7 +90,10 @@ export class Hub {
     }
     if (!m || typeof m !== 'object' || typeof m.t !== 'string') return c.error('bad-message', 'Missing type.');
 
-    if (m.t === 'ping') return c.send({ t: 'pong' });
+    if (m.t === 'ping') {
+      this.log('debug', 'ping', c.tag());
+      return c.send({ t: 'pong' });
+    }
     if (m.t === 'hello') return this.onHello(c, m);
     if (!c.id) return c.error('no-hello', 'Say hello first.');
 
@@ -86,10 +101,15 @@ export class Hub {
       case 'signal': return this.onSignal(c, m);
       case 'links': return this.onLinks(c, m);
       case 'rename': return this.onRename(c, m);
-      case 'ice': return c.send({ t: 'ice', ice: this.iceFor(c.id) });
+      case 'ice':
+        this.log('info', 'ice.refresh', c.tag());
+        return c.send({ t: 'ice', ice: this.iceFor(c.id) });
       case 'pair-create': return this.onPairCreate(c);
       case 'pair-join': return this.onPairJoin(c, m);
-      case 'pair-cancel': return this.dropCodesOf(c.id);
+      case 'pair-cancel':
+        this.log('debug', 'pair.cancel', c.tag());
+        return this.dropCodesOf(c.id);
+      case 'log': return this.onClientLog(c, m);
       default: return c.error('bad-message', 'Unknown type.');
     }
   }
@@ -119,6 +139,7 @@ export class Hub {
     // Same device from another tab or a stale socket: the newest one wins.
     const old = this.clients.get(id);
     if (old) {
+      this.log('info', 'hello.replaced', { dev: id.slice(0, 8), oldConn: old.cid, newConn: c.cid });
       old.send({ t: 'error', code: 'replaced', msg: 'Opened somewhere else.' });
       old.conn.close(4001, 'replaced');
       this.onClose(old);
@@ -141,7 +162,10 @@ export class Hub {
       ice: this.iceFor(id),
     });
     this.refreshAround(c);
-    this.opts.log(`hello ${id.slice(0, 8)} group=${c.group} peers=${c.visible.size}`);
+    this.log('info', 'hello.ok', {
+      ...c.tag(), name: c.name, kind: c.kind, ip: c.ip, group: c.group, links: c.links.size,
+      sees: [...c.visible].map(([vid, via]) => `${this.label(vid)}(${via})`).join(',') || 'nobody',
+    });
   }
 
   onSignal(c, m) {
@@ -150,6 +174,7 @@ export class Hub {
     if (!['offer', 'answer', 'ice', 'bye'].includes(m.kind)) return c.error('bad-message', 'Bad signal kind.');
     if (typeof m.data !== 'string' || m.data.length > SIGNAL_DATA_MAX) return c.error('bad-message', 'Bad signal data.');
     if (typeof m.sig !== 'string' || m.sig.length > 200 || !Number.isFinite(m.ts)) return c.error('bad-message', 'Unsigned signal.');
+    this.log('info', 'signal', { from: this.label(c.id), to: this.label(to.id), kind: m.kind, bytes: m.data.length, ...describeSignal(m.kind, m.data) });
     // Forwarded verbatim. The receiver checks the signature against the sender's key.
     to.send({ t: 'signal', from: c.id, kind: m.kind, data: m.data, ts: m.ts, sig: m.sig });
   }
@@ -157,12 +182,14 @@ export class Hub {
   onLinks(c, m) {
     const oldLinks = c.links;
     c.links = this.cleanLinks(m.ids, c.id);
+    this.log('info', 'links', { ...c.tag(), trusts: [...c.links].map((x) => this.label(x)).join(',') || 'none' });
     this.refreshAround(c, oldLinks);
   }
 
   onRename(c, m) {
     const name = cleanText(m.name, NAME_MAX);
     if (!name) return;
+    this.log('info', 'rename', { ...c.tag(), from: c.name, to: name });
     c.name = name;
     for (const vid of c.visible.keys()) {
       const v = this.clients.get(vid);
@@ -177,6 +204,7 @@ export class Hub {
     do code = pairCode(); while (this.codes.has(code));
     this.codes.set(code, { id: c.id, expires: Date.now() + PAIR_TTL_S * 1000 });
     c.send({ t: 'pair-code', code, ttl: PAIR_TTL_S });
+    this.log('info', 'pair.code', { ...c.tag(), code: code.slice(0, 2) + '****', ttl: PAIR_TTL_S });
   }
 
   onPairJoin(c, m) {
@@ -186,13 +214,14 @@ export class Hub {
     if (!this.pairJoinLimit.take(c.ip)) return c.error('rate-limited', 'Too many tries. Wait a few minutes.');
     const owner = entry && entry.expires > Date.now() ? this.clients.get(entry.id) : null;
     if (!owner) {
+      this.log('warn', 'pair.join.fail', { ...c.tag(), why: !entry ? 'unknown' : entry.expires <= Date.now() ? 'expired' : 'owner offline' });
       if (entry) this.codes.delete(code);
       return c.error('bad-code', 'That code did not work. Check it, or ask for a new one.');
     }
     this.codes.delete(code); // single use
     owner.send({ t: 'paired', peer: { id: c.id, name: c.name, kind: c.kind, pub: c.pub } });
     c.send({ t: 'paired', peer: { id: owner.id, name: owner.name, kind: owner.kind, pub: owner.pub } });
-    this.opts.log(`paired ${owner.id.slice(0, 8)} <-> ${c.id.slice(0, 8)}`);
+    this.log('info', 'pair.ok', { a: this.label(owner.id), b: this.label(c.id), sameGroup: owner.group === c.group });
   }
 
   onClose(c) {
@@ -209,7 +238,10 @@ export class Hub {
     this.dropCodesOf(c.id);
     for (const vid of c.visible.keys()) {
       const v = this.clients.get(vid);
-      if (v && v.visible.delete(c.id)) v.send({ t: 'peer-left', id: c.id });
+      if (v && v.visible.delete(c.id)) {
+        this.log('info', 'visible.remove', { viewer: this.label(v.id), lost: this.label(c.id), why: 'offline' });
+        v.send({ t: 'peer-left', id: c.id });
+      }
     }
   }
 
@@ -240,9 +272,17 @@ export class Hub {
   refresh(x) {
     const next = this.visibleFor(x);
     for (const [id, via] of next) {
-      if (x.visible.get(id) !== via) x.send({ t: 'peer-joined', peer: this.peerInfo(this.clients.get(id), via) });
+      if (x.visible.get(id) !== via) {
+        this.log('info', 'visible.add', { viewer: this.label(x.id), sees: this.label(id), via });
+        x.send({ t: 'peer-joined', peer: this.peerInfo(this.clients.get(id), via) });
+      }
     }
-    for (const id of x.visible.keys()) if (!next.has(id)) x.send({ t: 'peer-left', id });
+    for (const id of x.visible.keys()) {
+      if (!next.has(id)) {
+        this.log('info', 'visible.remove', { viewer: this.label(x.id), lost: this.label(id) });
+        x.send({ t: 'peer-left', id });
+      }
+    }
     x.visible = next;
   }
 
@@ -257,6 +297,21 @@ export class Hub {
   }
 
   // ---- misc ----
+
+  /** Debug lines a page sends when it runs with ?debug=1 (see web/js/log.js). */
+  onClientLog(c, m) {
+    if (!Array.isArray(m.lines)) return;
+    for (const line of m.lines.slice(0, 60)) {
+      if (typeof line !== 'string') continue;
+      this.log('info', 'client', { dev: this.label(c.id), line: line.replace(/[\u0000-\u001f]/g, ' ').slice(0, 600) });
+    }
+  }
+
+  /** "abcd1234/Quiet Fox" for log lines. */
+  label(id) {
+    const c = this.clients.get(id);
+    return id ? id.slice(0, 8) + (c ? '/' + c.name : '') : '-';
+  }
 
   iceFor(id) {
     const { stunUrls, turnUrls, turnSecret, turnTtl } = this.opts;
@@ -282,13 +337,45 @@ export class Hub {
     this.helloLimit.sweep();
   }
 
+  dump() {
+    return [...this.clients.values()].map((c) => ({
+      dev: this.label(c.id), kind: c.kind, ip: c.ip, group: c.group, conn: c.cid,
+      online: Math.round((Date.now() - c.t0) / 1000) + 's',
+      sees: [...c.visible].map(([vid, via]) => `${this.label(vid)}(${via})`),
+    }));
+  }
+
   stats() {
     return { devices: this.clients.size, groups: this.groups.size, codes: this.codes.size };
   }
 }
 
+/** Summarize a signaling payload for logs: candidate types and protocols, never the full SDP. */
+function describeSignal(kind, data) {
+  try {
+    const d = JSON.parse(data);
+    if (kind === 'ice') {
+      const cand = (d.c && d.c.candidate) || '';
+      if (!cand) return { cand: 'end-of-candidates' };
+      const m = cand.match(/ (udp|tcp) \d+ (\S+) (\d+) typ (\w+)/i);
+      return m ? { cand: m[4], proto: m[1].toLowerCase(), addr: `${m[2]}:${m[3]}`, sess: d.sess } : { cand: 'unparsed' };
+    }
+    if (kind === 'offer' || kind === 'answer') {
+      const sdp = String(d.sdp || '');
+      const types = [...sdp.matchAll(/ typ (\w+)/g)].map((x) => x[1]);
+      return { sess: d.sess, fingerprint: /a=fingerprint:/.test(sdp) ? 'yes' : 'MISSING', inlineCands: types.length ? types.join(',') : 'none(trickle)' };
+    }
+    return { sess: d.sess };
+  } catch {
+    return { parse: 'failed' };
+  }
+}
+
 class Client {
-  constructor(conn, ip, group) {
+  constructor(conn, ip, group, hub, cid) {
+    this.hub = hub;
+    this.cid = cid;
+    this.t0 = Date.now();
     this.conn = conn;
     this.ip = ip;
     this.group = group;
@@ -301,7 +388,11 @@ class Client {
   send(obj) {
     if (!this.closed) this.conn.send(JSON.stringify(obj));
   }
+  tag() {
+    return this.id ? { dev: this.hub.label(this.id) } : { conn: this.cid, ip: this.ip };
+  }
   error(code, msg, extra) {
+    this.hub.log(code === 'rate-limited' || code === 'bad-hello' ? 'warn' : 'info', 'reply.error', { ...this.tag(), code, msg });
     this.send({ t: 'error', code, msg, ...extra });
   }
   allowMessage() {

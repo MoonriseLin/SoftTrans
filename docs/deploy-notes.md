@@ -10,6 +10,14 @@
 - Health: `curl https://mio.pantsu.uk/healthz` returns counts only, no IDs.
 - Firewall: the host has no nftables or iptables rules. If the provider has a cloud firewall, open 80/tcp, 443/tcp, 8443/tcp (redirect only), 3478/udp+tcp, 5349/tcp and 49160–49999/udp.
 
+### Logs
+
+- Follow everything live: `sh deploy/logs.sh` (or `server`, `turn`, `dump` as the argument). It wraps `journalctl -u softdrop -u coturn`.
+- The signaling server writes one line per event (`LEVEL event key=value …`). Events cover connect and disconnect, registration, who can see whom, every relayed signal (kind, size, ICE candidate type and address, never the SDP body or any file data), pairing (codes are masked), rate limits and error replies. `LOG_LEVEL=debug` in `/etc/softdrop/softdrop.env` also logs pings and HTTP requests.
+- `sh deploy/logs.sh dump` (that is, `systemctl kill -s USR2 softdrop`) prints every online device and who it can see.
+- **Page debug mode:** open the page with `?debug=1` (remembered; `?debug=0` turns it off). The page then shows a debug log panel and streams its lines to the server log as `client dev=… line=…`. It logs ICE candidates, connection states, the selected candidate pair with addresses and RTT, the DTLS fingerprint check, and transfer steps with speeds and hash results. This is the way to follow a phone, which has no console.
+- coturn runs with `verbose`. Each relay session logs its allocation and a closing `usage:` line with packet and byte counts. Remove `verbose` from `/etc/turnserver.conf` when testing is over.
+
 The notes below are the original generic plan.
 
 

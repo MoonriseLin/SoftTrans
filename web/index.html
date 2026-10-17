@@ -38,6 +38,19 @@
 
   <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
 
+  <section class="debug" id="debugPanel" hidden data-i18n-attr="aria-label:debug.title" aria-label="Debug log">
+    <div class="debug-head">
+      <strong data-i18n="debug.title">Debug log</strong>
+      <span class="debug-note" data-i18n="debug.note">Also sent to the server log. Turn off with ?debug=0</span>
+      <div class="debug-btns">
+        <button type="button" class="btn ghost sm" id="debugCopy" data-i18n="debug.copy">Copy</button>
+        <button type="button" class="btn ghost sm" id="debugClear" data-i18n="debug.clear">Clear</button>
+        <button type="button" class="btn ghost sm" id="debugToggle" data-i18n="debug.hide">Hide</button>
+      </div>
+    </div>
+    <pre id="debugLines"></pre>
+  </section>
+
   <section aria-labelledby="nearbyTitle">
     <div class="stage-head">
       <h2 class="label" id="nearbyTitle" data-i18n="nearby">Nearby</h2>

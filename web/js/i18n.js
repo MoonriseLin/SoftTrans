@@ -138,6 +138,12 @@ const en = {
 
   'foot.e2e': 'End-to-end encrypted. The server only introduces your devices and never sees what you send.',
   'foot.key': 'Your key',
+  'debug.title': 'Debug log',
+  'debug.note': 'Also sent to the server log. Turn off with ?debug=0',
+  'debug.copy': 'Copy',
+  'debug.clear': 'Clear',
+  'debug.hide': 'Hide',
+  'debug.show': 'Show',
 };
 
 const zh = {
@@ -267,6 +273,12 @@ const zh = {
 
   'foot.e2e': '端到端加密。服务器只负责让你的设备互相认识，永远看不到你发送的内容。',
   'foot.key': '你的密钥',
+  'debug.title': '调试日志',
+  'debug.note': '同时会发送到服务器日志。用 ?debug=0 关闭',
+  'debug.copy': '复制',
+  'debug.clear': '清空',
+  'debug.hide': '收起',
+  'debug.show': '展开',
 };
 
 const zhHant = {
@@ -396,6 +408,12 @@ const zhHant = {
 
   'foot.e2e': '端對端加密。伺服器只負責讓你的裝置互相認識，永遠看不到你傳送的內容。',
   'foot.key': '你的金鑰',
+  'debug.title': '除錯日誌',
+  'debug.note': '同時會傳送到伺服器日誌。用 ?debug=0 關閉',
+  'debug.copy': '複製',
+  'debug.clear': '清除',
+  'debug.hide': '收起',
+  'debug.show': '展開',
 };
 
 const ja = {
@@ -525,6 +543,12 @@ const ja = {
 
   'foot.e2e': 'エンドツーエンドで暗号化。サーバーはデバイス同士を引き合わせるだけで、送った内容を見ることはありません。',
   'foot.key': 'あなたの鍵',
+  'debug.title': 'デバッグログ',
+  'debug.note': 'サーバーのログにも送信されます。?debug=0 でオフ',
+  'debug.copy': 'コピー',
+  'debug.clear': '消去',
+  'debug.hide': '隠す',
+  'debug.show': '表示',
 };
 
 const DICT = { en, zh, 'zh-Hant': zhHant, ja };

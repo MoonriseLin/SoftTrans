@@ -5,6 +5,7 @@
 
 import { verify } from './identity.js';
 import { signedText } from './signaling.js';
+import { dlog } from './log.js';
 
 const CONNECT_TIMEOUT_MS = 20000;
 const DISCONNECT_GRACE_MS = 4000;
@@ -32,7 +33,7 @@ function isPrivate(addr) {
  *  'direct' a STUN-assisted path between networks
  *  'relay'  through TURN on the VPS
  */
-export async function readRoute(pc) {
+export async function readRoute(pc, remoteHostPorts = new Set()) {
   const stats = await pc.getStats();
   let pair = null;
   let transport = null;
@@ -50,9 +51,13 @@ export async function readRoute(pc) {
   const remote = stats.get(pair.remoteCandidateId) || {};
   const lt = local.candidateType, rt = remote.candidateType;
   const laddr = local.address || local.ip, raddr = remote.address || remote.ip;
+  // A check can arrive before the peer's host candidate is signaled. The browser then
+  // records it as peer-reflexive and may hide its address, but the port still matches
+  // one of the host candidates the peer sent us: that is the same LAN path.
+  const rtHost = rt === 'host' || (rt === 'prflx' && remote.port != null && remoteHostPorts.has(Number(remote.port)));
   let route = 'direct';
   if (lt === 'relay' || rt === 'relay') route = 'relay';
-  else if (lt === 'host' && (rt === 'host' || (rt === 'prflx' && isPrivate(raddr)))) route = 'lan';
+  else if (lt === 'host' && (rtHost || (rt === 'prflx' && isPrivate(raddr)))) route = 'lan';
   else if (lt === 'prflx' && rt === 'host' && isPrivate(laddr)) route = 'lan';
 
   let remoteFp = null;
@@ -60,7 +65,12 @@ export async function readRoute(pc) {
     const cert = stats.get(transport.remoteCertificateId);
     if (cert && cert.fingerprint) remoteFp = (cert.fingerprintAlgorithm || '').toLowerCase() + ' ' + cert.fingerprint.toUpperCase();
   }
-  return { route, local: lt, remote: rt, protocol: local.protocol, remoteFp };
+  return {
+    route, local: lt, remote: rt === 'prflx' && rtHost ? 'prflx=host' : rt, protocol: local.protocol, remoteFp,
+    localAddr: laddr && `${laddr}:${local.port}`, remoteAddr: raddr && `${raddr}:${remote.port}`,
+    relayProto: local.relayProtocol, rtt: pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : undefined,
+    sent: pair.bytesSent, recv: pair.bytesReceived,
+  };
 }
 
 /** One RTCPeerConnection + the `softdrop` data channel to one peer. */
@@ -79,6 +89,11 @@ export class PeerLink extends EventTarget {
     this.waiters = [];
     this.pinned = new Set();
     this.restarts = 0;
+    this.remoteHostPorts = new Set();
+  }
+
+  get short() {
+    return this.peerId.slice(0, 8);
   }
 
   get polite() {
@@ -87,6 +102,7 @@ export class PeerLink extends EventTarget {
 
   setState(s, why) {
     if (this.state === s) return;
+    dlog('rtc', `link ${this.short} ${this.state} -> ${s}`, { why });
     this.state = s;
     this.dispatchEvent(new CustomEvent('state', { detail: { state: s, why } }));
     if (s === 'open') this.waiters.splice(0).forEach((w) => w.resolve(this.dc));
@@ -106,10 +122,20 @@ export class PeerLink extends EventTarget {
     this.sess = sess;
     this.route = null;
     this.pinned = new Set();
+    this.remoteHostPorts = new Set();
     this.pendingIce = [];
     this.setState('connecting');
     const iceServers = await this.mgr.sig.iceServers();
     const pc = new RTCPeerConnection({ iceServers, bundlePolicy: 'max-bundle', iceTransportPolicy: FORCE_RELAY ? 'relay' : 'all' });
+    dlog('rtc', `new pc ${this.short}`, {
+      sess, role: this.offerer ? 'offerer' : 'answerer', polite: this.polite, policy: FORCE_RELAY ? 'relay-only' : 'all',
+      servers: iceServers.map((x) => [].concat(x.urls).join(' ')).join(' | ') || 'none',
+    });
+    const t0 = performance.now();
+    const ms = () => Math.round(performance.now() - t0) + 'ms';
+    pc.onicegatheringstatechange = () => dlog('rtc', `gathering ${pc.iceGatheringState}`, { peer: this.short, at: ms() });
+    pc.onsignalingstatechange = () => dlog('rtc', `signaling ${pc.signalingState}`, { peer: this.short });
+    pc.onicecandidateerror = (e) => dlog('rtc', 'candidate error', { peer: this.short, url: e.url, code: e.errorCode, text: e.errorText, at: ms() });
     this.pc = pc;
     // Negotiated channel: both sides create it, so glare cannot leave one side without a channel.
     const dc = pc.createDataChannel('softdrop', { negotiated: true, id: 0, ordered: true });
@@ -122,13 +148,24 @@ export class PeerLink extends EventTarget {
     };
     dc.onmessage = (e) => this.dispatchEvent(new CustomEvent('message', { detail: e.data }));
     pc.onicecandidate = (e) => {
+      if (e.candidate) dlog('rtc', 'local candidate', { peer: this.short, ...candInfo(e.candidate.candidate), at: ms() });
+      else dlog('rtc', 'local candidates done', { peer: this.short, at: ms() });
       if (this.pc === pc && e.candidate) this.mgr.sig.signal(this.peerId, 'ice', { sess, c: e.candidate.toJSON() });
     };
-    pc.onconnectionstatechange = () => this.onPcState(pc);
-    pc.oniceconnectionstatechange = () => this.onPcState(pc);
+    pc.onconnectionstatechange = () => {
+      dlog('rtc', `connection ${pc.connectionState}`, { peer: this.short, at: ms() });
+      this.onPcState(pc);
+    };
+    pc.oniceconnectionstatechange = () => {
+      dlog('rtc', `ice ${pc.iceConnectionState}`, { peer: this.short, at: ms() });
+      this.onPcState(pc);
+    };
     clearTimeout(this.connectTimer);
     this.connectTimer = setTimeout(() => {
-      if (this.pc === pc && this.state === 'connecting') this.fail('err.unreach');
+      if (this.pc === pc && this.state === 'connecting') {
+        dlog('rtc', 'connect timeout', { peer: this.short, ms: CONNECT_TIMEOUT_MS, ice: pc.iceConnectionState, gathering: pc.iceGatheringState });
+        this.fail('err.unreach');
+      }
     }, CONNECT_TIMEOUT_MS);
     return pc;
   }
@@ -143,6 +180,7 @@ export class PeerLink extends EventTarget {
 
   async restartIce() {
     const pc = this.pc;
+    dlog('rtc', 'ice restart', { peer: this.short, attempt: this.restarts + 1, offerer: this.offerer });
     if (!pc || !this.offerer || this.restarts++ > 2) return this.fail('err.lost');
     const offer = await pc.createOffer({ iceRestart: true });
     await pc.setLocalDescription(offer);
@@ -159,10 +197,12 @@ export class PeerLink extends EventTarget {
       const sameSession = this.pc && d.sess === this.sess;
       if (!sameSession && this.pc && this.pc.signalingState === 'have-local-offer') {
         // Both sides offered at once. The impolite side keeps its own offer.
+        dlog('rtc', 'glare', { peer: this.short, polite: this.polite, action: this.polite ? 'yield to their offer' : 'keep mine' });
         if (!this.polite) return;
       }
       const pc = sameSession ? this.pc : await this.newPc(d.sess);
       if (!sameSession) this.offerer = false;
+      dlog('rtc', sameSession ? 'renegotiation offer (ice restart)' : 'incoming offer', { peer: this.short, sess: d.sess, cands: sdpCands(d.sdp) });
       this.pinSdp(d.sdp);
       await pc.setRemoteDescription({ type: 'offer', sdp: d.sdp });
       await this.flushIce();
@@ -173,13 +213,17 @@ export class PeerLink extends EventTarget {
     }
     if (d.sess !== this.sess || !this.pc) return;
     if (kind === 'answer') {
-      if (this.pc.signalingState !== 'have-local-offer') return;
+      if (this.pc.signalingState !== 'have-local-offer') return dlog('rtc', 'answer ignored', { peer: this.short, state: this.pc.signalingState });
+      dlog('rtc', 'answer received', { peer: this.short, cands: sdpCands(d.sdp) });
       this.pinSdp(d.sdp);
       await this.pc.setRemoteDescription({ type: 'answer', sdp: d.sdp });
       await this.flushIce();
     } else if (kind === 'ice') {
+      const ci = candInfo(d.c && d.c.candidate);
+      if (ci.type === 'host' && ci.addr) this.remoteHostPorts.add(Number(ci.addr.split(':').pop()));
+      dlog('rtc', 'remote candidate', { peer: this.short, ...ci, queued: !this.pc.remoteDescription });
       if (!this.pc.remoteDescription) this.pendingIce.push(d.c);
-      else await this.pc.addIceCandidate(d.c).catch(() => {});
+      else await this.pc.addIceCandidate(d.c).catch((e) => dlog('rtc', 'addIceCandidate failed', { peer: this.short, err: e.message }));
     }
   }
 
@@ -195,9 +239,15 @@ export class PeerLink extends EventTarget {
   }
 
   async onOpen(pc) {
-    const info = await readRoute(pc).catch(() => ({ route: null }));
+    const info = await readRoute(pc, this.remoteHostPorts).catch(() => ({ route: null }));
     if (this.pc !== pc) return;
     // Defense in depth: the certificate DTLS actually used must be one the signed SDP named.
+    dlog('rtc', 'channel open', {
+      peer: this.short, route: info.route, pair: `${info.local}/${info.remote}`, proto: info.protocol, relayProto: info.relayProto,
+      local: info.localAddr, remote: info.remoteAddr, rtt: info.rtt != null ? info.rtt + 'ms' : undefined,
+      maxMsg: pc.sctp && pc.sctp.maxMessageSize,
+      dtls: !info.remoteFp ? 'fingerprint not in stats (skipped)' : this.pinned.has(info.remoteFp) ? 'pinned fingerprint matches' : 'MISMATCH',
+    });
     if (info.remoteFp && this.pinned.size && !this.pinned.has(info.remoteFp)) {
       this.fail('err.cert');
       return;
@@ -207,11 +257,20 @@ export class PeerLink extends EventTarget {
     this.setRoute(info.route);
     this.setState('open');
     clearInterval(this.routeTimer);
-    this.routeTimer = setInterval(async () => {
+    const recheck = async () => {
       if (this.pc !== pc || this.state !== 'open') return;
-      const r = await readRoute(pc).catch(() => null);
-      if (r && r.route) this.setRoute(r.route);
-    }, 4000);
+      const r = await readRoute(pc, this.remoteHostPorts).catch(() => null);
+      if (r && r.route) {
+        if (r.route !== this.route || `${r.localAddr}>${r.remoteAddr}` !== this.lastPair) {
+          dlog('rtc', 'selected pair changed', { peer: this.short, route: r.route, pair: `${r.local}/${r.remote}`, local: r.localAddr, remote: r.remoteAddr, rtt: r.rtt });
+        }
+        this.lastPair = `${r.localAddr}>${r.remoteAddr}`;
+        this.setRoute(r.route);
+      }
+    };
+    // Candidates often finish arriving just after the channel opens: look again soon.
+    setTimeout(recheck, 1200);
+    this.routeTimer = setInterval(recheck, 4000);
   }
 
   setRoute(r) {
@@ -243,11 +302,13 @@ export class PeerLink extends EventTarget {
 
   lost(why) {
     if (this.state === 'closed' || this.state === 'failed') return;
+    dlog('rtc', 'link lost', { peer: this.short, why });
     this.teardown();
     this.setState('closed', why);
   }
 
   fail(why) {
+    dlog('rtc', 'link failed', { peer: this.short, why, ice: this.pc && this.pc.iceConnectionState });
     this.teardown();
     this.setState('failed', why);
   }
@@ -324,11 +385,13 @@ export class PeerManager extends EventTarget {
 
   async onSignal(m) {
     const peer = this.lookup(m.from);
-    if (!peer) return;
-    if (Math.abs(Date.now() - m.ts) > CLOCK_SKEW_MS) return console.warn('softdrop: stale signal from', m.from);
-    if (this.seen.has(m.sig)) return; // replay
+    if (!peer) return dlog('sig', 'DROP signal from unknown device', { from: m.from.slice(0, 8), kind: m.kind });
+    const from = m.from.slice(0, 8);
+    if (Math.abs(Date.now() - m.ts) > CLOCK_SKEW_MS) return dlog('sig', 'DROP stale signal', { from, kind: m.kind, skewMs: Date.now() - m.ts });
+    if (this.seen.has(m.sig)) return dlog('sig', 'DROP replayed signal', { from, kind: m.kind });
     const ok = await verify(peer.pub, m.sig, signedText(m.from, this.me.id, m.kind, m.ts, m.data));
-    if (!ok) return console.warn('softdrop: bad signature from', m.from);
+    if (!ok) return dlog('sig', 'DROP bad signature', { from, kind: m.kind });
+    dlog('sig', 'recv ' + m.kind + ' (signature ok)', { from, bytes: m.data.length });
     this.seen.add(m.sig);
     if (this.seen.size > 5000) this.seen = new Set([...this.seen].slice(-2000));
     let data;
@@ -353,4 +416,15 @@ export class PeerManager extends EventTarget {
       this.links.delete(id);
     }
   }
+}
+
+function candInfo(c) {
+  if (!c) return { type: 'end' };
+  const m = c.match(/ (udp|tcp) \d+ (\S+) (\d+) typ (\w+)(?:.* tcptype (\w+))?/i);
+  return m ? { type: m[4], proto: m[1].toLowerCase() + (m[5] ? '/' + m[5] : ''), addr: `${m[2]}:${m[3]}` } : { raw: c.slice(0, 80) };
+}
+
+function sdpCands(sdp) {
+  const t = [...String(sdp).matchAll(/ typ (\w+)/g)].map((x) => x[1]);
+  return t.length ? t.join(',') : 'trickle';
 }

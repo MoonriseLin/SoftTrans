@@ -1,6 +1,8 @@
 // WebSocket client for the signaling server: challenge/hello handshake,
 // reconnects with backoff, keepalive. Emits every server message by its `t`.
 
+import { dlog } from './log.js';
+
 export class Signaling extends EventTarget {
   /** @param {import('./identity.js').Identity} me */
   constructor(me, url) {
@@ -18,10 +20,12 @@ export class Signaling extends EventTarget {
   start() {
     if (this.ws) return;
     this.setState('connecting');
+    dlog('ws', 'connecting', { url: this.url, attempt: this.retry + 1 });
     const ws = new WebSocket(this.url);
     this.ws = ws;
     ws.onmessage = (e) => this.onMessage(e.data);
     ws.onclose = (e) => {
+      dlog('ws', 'closed', { code: e.code, reason: e.reason, clean: e.wasClean });
       this.ws = null;
       clearInterval(this.ping);
       if (e.code === 4001) {
@@ -30,6 +34,7 @@ export class Signaling extends EventTarget {
       }
       this.setState('closed');
       const wait = Math.min(15000, 600 * 2 ** this.retry++) * (0.75 + Math.random() * 0.5);
+      dlog('ws', 'retry scheduled', { inMs: Math.round(wait) });
       this.timer = setTimeout(() => this.start(), wait);
     };
   }
@@ -44,6 +49,7 @@ export class Signaling extends EventTarget {
   }
 
   setState(s) {
+    if (this.state !== s) dlog('ws', 'state ' + this.state + ' -> ' + s);
     this.state = s;
     this.dispatchEvent(new CustomEvent('state', { detail: s }));
   }
@@ -55,6 +61,7 @@ export class Signaling extends EventTarget {
     } catch {
       return;
     }
+    if (m.t !== 'pong' && m.t !== 'signal') dlog('ws', 'recv ' + m.t, summarize(m));
     if (m.t === 'challenge') {
       const sig = await this.me.sign(`softdrop/hello\n${m.nonce}\n${this.me.id}`);
       this.raw({
@@ -65,6 +72,9 @@ export class Signaling extends EventTarget {
     }
     if (m.t === 'welcome') {
       this.retry = 0;
+      for (const s of (m.ice && m.ice.iceServers) || []) {
+        dlog('ws', 'ice server', { urls: [].concat(s.urls).join(' '), auth: s.username ? 'turn-rest expires ' + new Date(m.ice.expires * 1000).toISOString() : 'none' });
+      }
       this.setIce(m.ice);
       this.setState('open');
       clearInterval(this.ping);
@@ -112,10 +122,25 @@ export class Signaling extends EventTarget {
     const s = JSON.stringify(data);
     const ts = Date.now();
     const sig = await this.me.sign(signedText(this.me.id, to, kind, ts, s));
+    dlog('sig', 'send ' + kind, { to: to.slice(0, 8), bytes: s.length, open: this.state === 'open' });
     this.send({ t: 'signal', to, kind, data: s, ts, sig });
   }
 }
 
 export function signedText(from, to, kind, ts, data) {
   return `softdrop/signal\n${from}\n${to}\n${kind}\n${ts}\n${data}`;
+}
+
+function summarize(m) {
+  const short = (id) => (typeof id === 'string' ? id.slice(0, 8) : id);
+  switch (m.t) {
+    case 'welcome': return { you: short(m.you && m.you.id), peers: (m.peers || []).map((p) => `${short(p.id)}/${p.name}(${p.via})`).join(', ') || 'none' };
+    case 'peer-joined':
+    case 'peer-updated': return { peer: `${short(m.peer.id)}/${m.peer.name}`, kind: m.peer.kind, via: m.peer.via };
+    case 'peer-left': return { peer: short(m.id) };
+    case 'error': return { code: m.code, msg: m.msg };
+    case 'paired': return { peer: `${short(m.peer.id)}/${m.peer.name}` };
+    case 'pair-code': return { ttl: m.ttl };
+    default: return undefined;
+  }
 }

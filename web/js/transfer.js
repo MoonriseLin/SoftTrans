@@ -3,6 +3,7 @@
 
 import { Sha256, hashBlob } from './sha256.js';
 import { createSink } from './sinks.js';
+import { dlog } from './log.js';
 
 // 64 KiB per frame when the peer's SCTP stack allows it (many times faster than
 // 16 KiB on slow CPUs), else the 16 KiB size every browser accepts.
@@ -40,6 +41,15 @@ export class TransferEngine extends EventTarget {
   }
 
   emit(t) {
+    if (t.status !== t.loggedStatus) {
+      dlog('xfer', `${t.dir} ${t.kind} ${t.loggedStatus || 'new'} -> ${t.status}`, {
+        tid: t.tid.slice(0, 8), name: t.kind === 'file' ? t.name : undefined, size: t.size, done: t.done,
+        peer: t.peer.slice(0, 8), route: t.route, error: t.error,
+        speed: t.speed ? (t.speed / 1e6).toFixed(2) + 'MB/s' : undefined,
+        secs: t.t0 && !isLive(t) ? ((performance.now() - t.t0) / 1000).toFixed(1) : undefined,
+      });
+      t.loggedStatus = t.status;
+    }
     this.dispatchEvent(new CustomEvent('update', { detail: t }));
   }
 
@@ -104,6 +114,7 @@ export class TransferEngine extends EventTarget {
     const meta = { t: 'meta', tid: t.tid, idx: t.idx, kind: t.kind, name: t.name, size: t.size, mime: t.mime };
     if (t.kind === 'text' && t.size <= INLINE_TEXT_MAX) meta.body = t.text;
     this.ctl(link, meta);
+    dlog('xfer', 'out meta sent', { tid: t.tid.slice(0, 8), kind: t.kind, size: t.size, resume: !!t.started });
     this.emit(t);
   }
 
@@ -118,6 +129,7 @@ export class TransferEngine extends EventTarget {
     const dc = link.dc;
     const max = link.pc && link.pc.sctp && link.pc.sctp.maxMessageSize;
     const CHUNK = max && max >= CHUNK_MAX + HEADER ? CHUNK_MAX : max && max > HEADER + 1024 ? Math.min(CHUNK_SAFE, max - HEADER) : CHUNK_SAFE;
+    dlog('xfer', 'out sending', { tid: t.tid.slice(0, 8), fromOffset: offset, chunk: CHUNK, peerMaxMsg: max, route: link.route });
     try {
       for (let off = offset; off < t.size; ) {
         const slice = new Uint8Array(await src.slice(off, Math.min(t.size, off + READ_SLICE)).arrayBuffer());
@@ -140,6 +152,7 @@ export class TransferEngine extends EventTarget {
       const sha256 = t.kind === 'file' ? await t.hashP : new Sha256().update(t.bytes).hex();
       if (t.sending !== run || t.status !== 'active') return;
       this.ctl(link, { t: 'done', tid: t.tid, sha256 });
+      dlog('xfer', 'out all bytes sent, waiting for hash check', { tid: t.tid.slice(0, 8), sha256: sha256.slice(0, 16) });
       t.status = 'verifying';
       this.emit(t);
     } catch (e) {
@@ -173,6 +186,7 @@ export class TransferEngine extends EventTarget {
     }
     t.hash = new Sha256();
     t.sinkP = t.kind === 'file' ? createSink(t.tid, t.mime, t.size) : Promise.resolve(null);
+    t.sinkP.then((sk) => dlog('xfer', 'in storage', { tid: t.tid.slice(0, 8), sink: sk ? sk.constructor.name : 'text-memory' }), () => {});
     t.textParts = t.kind === 'text' ? [] : null;
     this.ctl(link, { t: 'accept', tid: t.tid, offset: 0 });
   }
@@ -226,7 +240,9 @@ export class TransferEngine extends EventTarget {
     if (t.done !== t.size) return this.failIn(link, t, 'err.early');
     t.status = 'verifying';
     this.emit(t);
-    if (t.hash.hex() !== sha256) return this.failIn(link, t, 'err.hash');
+    const mine = t.hash.hex();
+    dlog('xfer', mine === sha256 ? 'in hash ok' : 'in HASH MISMATCH', { tid: t.tid.slice(0, 8), mine: mine.slice(0, 16), theirs: String(sha256).slice(0, 16) });
+    if (mine !== sha256) return this.failIn(link, t, 'err.hash');
     if (t.kind === 'file') {
       const sink = await t.sinkP;
       t.file = await sink.finish(t.name);
@@ -268,7 +284,11 @@ export class TransferEngine extends EventTarget {
     } catch {
       return;
     }
-    if (m.t === 'meta') return this.onMeta(link, m);
+    if (m.t === 'meta') {
+      dlog('xfer', 'in meta', { tid: String(m.tid).slice(0, 8), kind: m.kind, size: m.size, mime: m.mime, inline: typeof m.body === 'string', known: this.all.has(m.tid) });
+      return this.onMeta(link, m);
+    }
+    if (m.t !== 'ack') dlog('xfer', 'ctl ' + m.t, { tid: String(m.tid).slice(0, 8), offset: m.offset, reason: m.reason });
     const t = this.all.get(m.tid);
     if (!t || t.peer !== link.peerId) return;
     switch (m.t) {
@@ -342,6 +362,8 @@ export class TransferEngine extends EventTarget {
   }
 
   onLinkOpen(link) {
+    const waiting = [...this.all.values()].filter((t) => t.peer === link.peerId && t.dir === 'out' && (t.status === 'paused' || t.status === 'waiting')).length;
+    if (waiting) dlog('xfer', 'link open: re-offering', { peer: link.peerId.slice(0, 8), transfers: waiting });
     for (const t of this.all.values()) {
       if (t.peer !== link.peerId) continue;
       if (t.dir === 'out' && (t.status === 'paused' || t.status === 'waiting')) this.offer(t);
@@ -365,6 +387,7 @@ export class TransferEngine extends EventTarget {
 
   /** Retry paused outgoing transfers to a peer (for example when it shows up again). */
   retry(peer) {
+    dlog('xfer', 'peer back: retry paused', { peer: peer.slice(0, 8) });
     for (const t of this.all.values()) if (t.peer === peer && t.dir === 'out' && t.status === 'paused') this.offer(t);
   }
 
@@ -387,6 +410,11 @@ export class TransferEngine extends EventTarget {
   }
 
   emitSoon(t) {
+    const tenth = t.size ? Math.floor((t.done / t.size) * 10) : 10;
+    if (tenth !== t.loggedTenth) {
+      t.loggedTenth = tenth;
+      if (tenth > 0 && tenth < 10) dlog('xfer', `${t.dir} progress ${tenth * 10}%`, { tid: t.tid.slice(0, 8), done: t.done, speed: (t.speed / 1e6).toFixed(2) + 'MB/s', route: t.route });
+    }
     if (t.emitTimer) return;
     t.emitTimer = setTimeout(() => {
       t.emitTimer = null;
