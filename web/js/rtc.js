@@ -33,7 +33,12 @@ function isPrivate(addr) {
  *  'direct' a STUN-assisted path between networks
  *  'relay'  through TURN on the VPS
  */
-export async function readRoute(pc, remoteHostPorts = new Set()) {
+/**
+ * ctx.remoteHostPorts: ports of host candidates the peer signaled.
+ * ctx.localPublic / ctx.remotePublic: public IPs from each side's srflx candidates.
+ */
+export async function readRoute(pc, ctx = {}) {
+  const remoteHostPorts = ctx.remoteHostPorts || new Set();
   const stats = await pc.getStats();
   let pair = null;
   let transport = null;
@@ -59,6 +64,14 @@ export async function readRoute(pc, remoteHostPorts = new Set()) {
   if (lt === 'relay' || rt === 'relay') route = 'relay';
   else if (lt === 'host' && (rtHost || (rt === 'prflx' && isPrivate(raddr)))) route = 'lan';
   else if (lt === 'prflx' && rt === 'host' && isPrivate(laddr)) route = 'lan';
+  // Hairpin: when local addresses can't be resolved (mDNS blocked), ICE often connects
+  // through the router's public address. If both sides share that public IP, the packets
+  // turn around inside the same router and never leave the local network.
+  let hairpin = false;
+  if (route === 'direct' && ['srflx', 'prflx'].includes(lt) && ['srflx', 'prflx'].includes(rt) && ctx.localPublic && ctx.remotePublic) {
+    for (const ip of ctx.localPublic) if (ctx.remotePublic.has(ip)) hairpin = true;
+    if (hairpin) route = 'lan';
+  }
 
   let remoteFp = null;
   if (transport && transport.remoteCertificateId) {
@@ -66,7 +79,7 @@ export async function readRoute(pc, remoteHostPorts = new Set()) {
     if (cert && cert.fingerprint) remoteFp = (cert.fingerprintAlgorithm || '').toLowerCase() + ' ' + cert.fingerprint.toUpperCase();
   }
   return {
-    route, local: lt, remote: rt === 'prflx' && rtHost ? 'prflx=host' : rt, protocol: local.protocol, remoteFp,
+    route, hairpin, local: lt, remote: rt === 'prflx' && rtHost ? 'prflx=host' : rt, protocol: local.protocol, remoteFp,
     localAddr: laddr && `${laddr}:${local.port}`, remoteAddr: raddr && `${raddr}:${remote.port}`,
     relayProto: local.relayProtocol, rtt: pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : undefined,
     sent: pair.bytesSent, recv: pair.bytesReceived,
@@ -90,6 +103,8 @@ export class PeerLink extends EventTarget {
     this.pinned = new Set();
     this.restarts = 0;
     this.remoteHostPorts = new Set();
+    this.localPublic = new Set();
+    this.remotePublic = new Set();
   }
 
   get short() {
@@ -123,6 +138,8 @@ export class PeerLink extends EventTarget {
     this.route = null;
     this.pinned = new Set();
     this.remoteHostPorts = new Set();
+    this.localPublic = new Set();
+    this.remotePublic = new Set();
     this.pendingIce = [];
     this.setState('connecting');
     const iceServers = await this.mgr.sig.iceServers();
@@ -148,7 +165,11 @@ export class PeerLink extends EventTarget {
     };
     dc.onmessage = (e) => this.dispatchEvent(new CustomEvent('message', { detail: e.data }));
     pc.onicecandidate = (e) => {
-      if (e.candidate) dlog('rtc', 'local candidate', { peer: this.short, ...candInfo(e.candidate.candidate), at: ms() });
+      if (e.candidate) {
+        const ci = candInfo(e.candidate.candidate);
+        if (ci.type === 'srflx' && ci.addr) this.localPublic.add(ipOf(ci.addr));
+        dlog('rtc', 'local candidate', { peer: this.short, ...ci, at: ms() });
+      }
       else dlog('rtc', 'local candidates done', { peer: this.short, at: ms() });
       if (this.pc === pc && e.candidate) this.mgr.sig.signal(this.peerId, 'ice', { sess, c: e.candidate.toJSON() });
     };
@@ -221,6 +242,7 @@ export class PeerLink extends EventTarget {
     } else if (kind === 'ice') {
       const ci = candInfo(d.c && d.c.candidate);
       if (ci.type === 'host' && ci.addr) this.remoteHostPorts.add(Number(ci.addr.split(':').pop()));
+      if (ci.type === 'srflx' && ci.addr) this.remotePublic.add(ipOf(ci.addr));
       dlog('rtc', 'remote candidate', { peer: this.short, ...ci, queued: !this.pc.remoteDescription });
       if (!this.pc.remoteDescription) this.pendingIce.push(d.c);
       else await this.pc.addIceCandidate(d.c).catch((e) => dlog('rtc', 'addIceCandidate failed', { peer: this.short, err: e.message }));
@@ -239,11 +261,11 @@ export class PeerLink extends EventTarget {
   }
 
   async onOpen(pc) {
-    const info = await readRoute(pc, this.remoteHostPorts).catch(() => ({ route: null }));
+    const info = await readRoute(pc, this).catch(() => ({ route: null }));
     if (this.pc !== pc) return;
     // Defense in depth: the certificate DTLS actually used must be one the signed SDP named.
     dlog('rtc', 'channel open', {
-      peer: this.short, route: info.route, pair: `${info.local}/${info.remote}`, proto: info.protocol, relayProto: info.relayProto,
+      peer: this.short, route: info.route + (info.hairpin ? ' (hairpin via router)' : ''), pair: `${info.local}/${info.remote}`, proto: info.protocol, relayProto: info.relayProto,
       local: info.localAddr, remote: info.remoteAddr, rtt: info.rtt != null ? info.rtt + 'ms' : undefined,
       maxMsg: pc.sctp && pc.sctp.maxMessageSize,
       dtls: !info.remoteFp ? 'fingerprint not in stats (skipped)' : this.pinned.has(info.remoteFp) ? 'pinned fingerprint matches' : 'MISMATCH',
@@ -259,10 +281,10 @@ export class PeerLink extends EventTarget {
     clearInterval(this.routeTimer);
     const recheck = async () => {
       if (this.pc !== pc || this.state !== 'open') return;
-      const r = await readRoute(pc, this.remoteHostPorts).catch(() => null);
+      const r = await readRoute(pc, this).catch(() => null);
       if (r && r.route) {
         if (r.route !== this.route || `${r.localAddr}>${r.remoteAddr}` !== this.lastPair) {
-          dlog('rtc', 'selected pair changed', { peer: this.short, route: r.route, pair: `${r.local}/${r.remote}`, local: r.localAddr, remote: r.remoteAddr, rtt: r.rtt });
+          dlog('rtc', 'selected pair changed', { peer: this.short, route: r.route + (r.hairpin ? ' (hairpin via router)' : ''), pair: `${r.local}/${r.remote}`, local: r.localAddr, remote: r.remoteAddr, rtt: r.rtt });
         }
         this.lastPair = `${r.localAddr}>${r.remoteAddr}`;
         this.setRoute(r.route);
@@ -427,4 +449,9 @@ function candInfo(c) {
 function sdpCands(sdp) {
   const t = [...String(sdp).matchAll(/ typ (\w+)/g)].map((x) => x[1]);
   return t.length ? t.join(',') : 'trickle';
+}
+
+function ipOf(addr) {
+  const i = addr.lastIndexOf(':');
+  return i > 0 ? addr.slice(0, i) : addr;
 }
