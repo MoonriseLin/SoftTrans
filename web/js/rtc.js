@@ -86,14 +86,28 @@ export async function readRoute(pc, ctx = {}) {
     if (cert && cert.fingerprint) remoteFp = (cert.fingerprintAlgorithm || '').toLowerCase() + ' ' + cert.fingerprint.toUpperCase();
   }
   // Every pair ICE got an answer on, with its RTT: shows whether another path would be faster.
+  // `tried` counts all pairs by type and state, and `remoteHosts` shows whether the peer's
+  // mDNS (.local) host candidates were resolved: tells "name lookup blocked" from "routing".
   const alive = [];
+  const tried = {};
+  const remoteHosts = [];
   stats.forEach((r) => {
-    if (r.type !== 'candidate-pair' || r.state !== 'succeeded') return;
+    if (r.type === 'remote-candidate' && r.candidateType === 'host') {
+      const a = r.address || r.ip || '';
+      remoteHosts.push(!a ? 'hidden' : a.endsWith('.local') ? 'unresolved' : isPrivate(a) ? 'private-ip' : 'public-ip');
+    }
+    if (r.type !== 'candidate-pair') return;
+    const lc = stats.get(r.localCandidateId) || {}, rc = stats.get(r.remoteCandidateId) || {};
+    const k = `${lc.candidateType}/${rc.candidateType}:${r.state}`;
+    tried[k] = (tried[k] || 0) + 1;
+    if (r.state !== 'succeeded') return;
     const l = stats.get(r.localCandidateId) || {}, m = stats.get(r.remoteCandidateId) || {};
     alive.push(`${l.candidateType}/${m.candidateType}${r.currentRoundTripTime != null ? ':' + Math.round(r.currentRoundTripTime * 1000) + 'ms' : ''}${r === pair ? '*' : ''}`);
   });
   return {
-    route, hairpin, alive: alive.join(' ') || 'none', local: lt, remote: rt === 'prflx' && rtHost ? 'prflx=host' : rt, protocol: local.protocol, remoteFp,
+    route, hairpin, alive: alive.join(' ') || 'none',
+    tried: Object.entries(tried).map(([k, n]) => (n > 1 ? `${k}x${n}` : k)).join(' '),
+    remoteHosts: remoteHosts.join(',') || 'none', local: lt, remote: rt === 'prflx' && rtHost ? 'prflx=host' : rt, protocol: local.protocol, remoteFp,
     localAddr: laddr && `${laddr}:${local.port}`, remoteAddr: raddr && `${raddr}:${remote.port}`,
     relayProto: local.relayProtocol, rtt: pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : undefined,
     sent: pair.bytesSent, recv: pair.bytesReceived,
@@ -282,6 +296,7 @@ export class PeerLink extends EventTarget {
       peer: this.short, route: info.route + (info.hairpin ? (info.route === 'lan' ? ' (hairpin via home router)' : ' (hairpin via a far NAT: VPN or proxy exit?)') : ''), pair: `${info.local}/${info.remote}`, proto: info.protocol, relayProto: info.relayProto,
       local: info.localAddr, remote: info.remoteAddr, rtt: info.rtt != null ? info.rtt + 'ms' : undefined,
       maxMsg: pc.sctp && pc.sctp.maxMessageSize, alivePairs: info.alive,
+      triedPairs: info.route === 'lan' ? undefined : info.tried, remoteHosts: info.route === 'lan' ? undefined : info.remoteHosts,
       dtls: !info.remoteFp ? 'fingerprint not in stats (skipped)' : this.pinned.has(info.remoteFp) ? 'pinned fingerprint matches' : 'MISMATCH',
     });
     if (info.remoteFp && this.pinned.size && !this.pinned.has(info.remoteFp)) {

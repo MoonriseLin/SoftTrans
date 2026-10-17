@@ -144,7 +144,7 @@ const en = {
   'debug.clear': 'Clear',
   'debug.hide': 'Hide',
   'debug.show': 'Show',
-  'hint.vpn': 'Slow path: your devices are on the same network, but the connection loops through a VPN. Turn on “bypass LAN” (or exclude local networks) in the VPN app on both devices for full speed.',
+  'hint.vpn': 'This transfer is slow because a VPN is sending it the long way round. Turn off the VPN on your phone while you send, and it will go at full Wi-Fi speed.',
 };
 
 const zh = {
@@ -280,7 +280,7 @@ const zh = {
   'debug.clear': '清空',
   'debug.hide': '收起',
   'debug.show': '展开',
-  'hint.vpn': '路线较慢：两台设备在同一个网络，但连接绕经了 VPN。在两台设备的 VPN 应用里打开“绕过局域网”（或排除本地网络），就能全速传输。',
+  'hint.vpn': '传输较慢，因为 VPN 让数据绕了远路。发送时暂时关闭手机上的 VPN，就能以 Wi-Fi 全速传输。',
 };
 
 const zhHant = {
@@ -416,7 +416,7 @@ const zhHant = {
   'debug.clear': '清除',
   'debug.hide': '收起',
   'debug.show': '展開',
-  'hint.vpn': '路線較慢：兩台裝置在同一個網路，但連線繞經了 VPN。在兩台裝置的 VPN App 裡開啟「略過區域網路」（或排除本地網路），就能全速傳輸。',
+  'hint.vpn': '傳輸較慢，因為 VPN 讓資料繞了遠路。傳送時暫時關閉手機上的 VPN，就能以 Wi-Fi 全速傳輸。',
 };
 
 const ja = {
@@ -552,7 +552,7 @@ const ja = {
   'debug.clear': '消去',
   'debug.hide': '隠す',
   'debug.show': '表示',
-  'hint.vpn': '遅い経路です：同じネットワークにいますが、接続が VPN を経由しています。両方のデバイスの VPN アプリで「LAN をバイパス」（ローカルネットワークを除外）をオンにすると、全速で送れます。',
+  'hint.vpn': 'VPN がデータを遠回りさせているため、転送が遅くなっています。送信中だけスマホの VPN をオフにすると、Wi-Fi の速度で送れます。',
 };
 
 const DICT = { en, zh, 'zh-Hant': zhHant, ja };
