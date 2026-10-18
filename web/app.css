@@ -1,5 +1,5 @@
 /* Softdrop. Ported from prototype/index.html, which stays the visual source of truth. */
-/* Layout: one calm column. A radar of nearby devices on a tonal slab, then the send card, a pairing strip and an activity list. */
+/* Layout: one calm column. A compact radar of nearby devices on a tonal slab, a bar with the latest thing received, the send card, the activity list, then the pairing strip. */
 :root {
   --bg: #FBF6F1;
   --surface: #FFFDFB;
@@ -95,15 +95,16 @@ h1 { margin: 0; font: 500 34px/1.05 var(--font-display); letter-spacing: -.02em;
 
 /* Radar */
 .radar {
-  position: relative; aspect-ratio: 10 / 9; overflow: hidden; border-radius: 30px;
-  background: radial-gradient(circle at 50% 52%, var(--accent-soft) 0%, transparent 62%), var(--surface-2);
+  position: relative; aspect-ratio: 3 / 2; max-height: 380px; width: 100%; overflow: hidden; border-radius: 30px;
+  background: radial-gradient(circle at 50% 48%, var(--accent-soft) 0%, transparent 52%), var(--surface-2);
 }
-.orbit { position: absolute; left: 50%; top: 52%; aspect-ratio: 1; border-radius: 50%; border: 1px solid var(--line); transform: translate(-50%, -50%); pointer-events: none; }
-.orbit.o1 { width: 40%; }
-.orbit.o2 { width: 72%; }
-.orbit.o3 { width: 104%; }
+/* Orbits are sized by height so they stay round on the wide slab. */
+.orbit { position: absolute; left: 50%; top: 48%; aspect-ratio: 1; border-radius: 50%; border: 1px solid var(--line); transform: translate(-50%, -50%); pointer-events: none; }
+.orbit.o1 { height: 46%; }
+.orbit.o2 { height: 84%; }
+.orbit.o3 { height: 122%; }
 .ripple {
-  position: absolute; left: 50%; top: 52%; width: 40%; aspect-ratio: 1; border-radius: 50%;
+  position: absolute; left: 50%; top: 48%; height: 46%; aspect-ratio: 1; border-radius: 50%;
   border: 1.5px solid var(--accent); opacity: 0; pointer-events: none;
   transform: translate(-50%, -50%) scale(.4);
   animation: ripple 6s ease-out infinite;
@@ -113,12 +114,12 @@ h1 { margin: 0; font: 500 34px/1.05 var(--font-display); letter-spacing: -.02em;
   0% { opacity: .5; transform: translate(-50%, -50%) scale(.4); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(2.5); }
 }
-.me { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); }
+.me { position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%); }
 .me .dot {
-  width: 60px; height: 60px; border-radius: 50%; background: var(--accent); color: var(--on-accent);
-  display: grid; place-items: center; box-shadow: 0 0 0 9px var(--accent-soft);
+  width: 50px; height: 50px; border-radius: 50%; background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center; box-shadow: 0 0 0 8px var(--accent-soft);
 }
-.me span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 12px; font-size: 12px; font-weight: 600; color: var(--accent-ink); white-space: nowrap; }
+.me span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--accent-ink); white-space: nowrap; }
 
 .device {
   position: absolute; left: var(--x); top: var(--y); transform: translate(-50%, -50%);
@@ -126,7 +127,7 @@ h1 { margin: 0; font: 500 34px/1.05 var(--font-display); letter-spacing: -.02em;
   text-align: center; cursor: pointer;
 }
 .avatar {
-  width: 56px; height: 56px; border-radius: 50%; background: var(--surface); color: var(--accent-ink);
+  width: 48px; height: 48px; border-radius: 50%; background: var(--surface); color: var(--accent-ink);
   display: grid; place-items: center; box-shadow: var(--shadow);
   transition: transform .4s var(--ease), box-shadow .4s var(--ease);
 }
@@ -207,6 +208,20 @@ textarea::placeholder { color: var(--muted); }
 .pair input::placeholder { color: var(--muted); letter-spacing: .08em; }
 .pairmsg { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
 
+/* Latest received: one line under the radar */
+.latest {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  margin-top: -8px; padding: 10px 12px 10px 10px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow);
+  cursor: pointer; animation: rise .4s var(--ease);
+}
+.latest .ico { width: 40px; height: 40px; border-radius: 13px; }
+.lt-head { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.latest .end { display: flex; align-items: center; gap: 6px; }
+.lt-pct { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.item.flash { animation: flash 1.2s var(--ease); }
+@keyframes flash { 0%, 60% { box-shadow: 0 0 0 3px var(--accent), var(--shadow); } 100% { box-shadow: var(--shadow); } }
+
 /* Activity */
 .list { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .item {
@@ -256,8 +271,8 @@ textarea::placeholder { color: var(--muted); }
 }
 
 .radar-empty {
-  position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); width: min(86%, 340px);
-  margin: 0; text-align: center; font-size: 14px; color: var(--muted); line-height: 1.45;
+  position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); width: min(86%, 340px);
+  margin: 0; text-align: center; font-size: 13px; color: var(--muted); line-height: 1.45;
   transition: opacity .4s var(--ease);
 }
 .radar-empty small { font-size: 12px; }

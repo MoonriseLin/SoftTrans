@@ -57,6 +57,9 @@ try {
   check(true, 'sender shows Sent');
   check(!(await b.$('[data-act="accept"]')), 'receiver accepted without asking');
   check(await b.isHidden('#debugPanel'), 'log panel hidden without ?debug=1');
+  check(/east gate/.test(await b.textContent('#latest .lt-title')), 'latest-received bar shows the text');
+  const sections = await b.$$eval('main > section:not([hidden])', (els) => els.map((e) => e.id || e.className || e.getAttribute('aria-labelledby')));
+  check(sections.join(',') === 'nearbyTitle,latest,sendTitle,actTitle,pair', `section order ${sections.join(',')}`);
 
   step('paste button');
   await a.evaluate(() => navigator.clipboard.writeText('from the clipboard'));

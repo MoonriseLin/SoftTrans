@@ -91,6 +91,8 @@ const en = {
 
 
   'act.title': 'Activity',
+  'latest.from': 'Latest from {who}',
+  'latest.aria': 'Latest received',
   'list.empty': 'Nothing yet. Pick a device and send something.',
   'item.text': 'Text message',
   'item.from': 'From {who} · {size}',
@@ -225,6 +227,8 @@ const zh = {
 
 
   'act.title': '动态',
+  'latest.from': '来自 {who} 的最新内容',
+  'latest.aria': '最新收到',
   'list.empty': '还没有内容。选择一台设备，发点什么吧。',
   'item.text': '文字消息',
   'item.from': '来自 {who} · {size}',
@@ -359,6 +363,8 @@ const zhHant = {
 
 
   'act.title': '動態',
+  'latest.from': '來自 {who} 的最新內容',
+  'latest.aria': '最新收到',
   'list.empty': '還沒有內容。選擇一台裝置，傳點什麼吧。',
   'item.text': '文字訊息',
   'item.from': '來自 {who} · {size}',
@@ -493,6 +499,8 @@ const ja = {
 
 
   'act.title': 'アクティビティ',
+  'latest.from': '{who} から届いた最新',
+  'latest.aria': '最新の受信',
   'list.empty': 'まだ何もありません。デバイスを選んで送ってみましょう。',
   'item.text': 'テキスト',
   'item.from': '{who} から · {size}',

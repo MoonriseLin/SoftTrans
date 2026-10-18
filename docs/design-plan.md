@@ -14,7 +14,9 @@ The trade-off is that background transfers are lost: the page must stay open on 
 2. **Drop zone.** A large card with rounded edges that gently "breathes". Drop files or paste text onto it. A text field sits inside the same card.
 3. **Incoming transfers.** A slim card slides up with Accept and Decline, then turns into a progress ring once accepted.
 
-The prototype adds two more parts: a pairing strip ("Different network?") with a 6-digit code, and an activity list that holds sent and received items.
+The prototype adds two more parts: a pairing strip ("Different network?") with a 4-digit code, and an activity list that holds sent and received items.
+
+As built (October 2026), top to bottom: a compact 3:2 radar, a one-line bar showing the newest item received from another device (tap it to jump to that item; it has Copy or Save), the send card, the activity list, then the pairing strip.
 
 ## Look: warm, rounded, slow-moving
 

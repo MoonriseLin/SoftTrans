@@ -189,9 +189,9 @@ async function main() {
   });
 
   /* ---------- radar ---------- */
+  // Positions on the 3:2 radar, clear of "You" in the middle.
   const SLOTS = [
-    { x: 24, y: 30 }, { x: 78, y: 31 }, { x: 27, y: 78 },
-    { x: 76, y: 76 }, { x: 50, y: 17 }, { x: 13, y: 55 }, { x: 87, y: 55 }, { x: 50, y: 88 },
+    { x: 19, y: 32 }, { x: 81, y: 32 }, { x: 19, y: 74 }, { x: 81, y: 74 },
   ];
   function slotFor(id) {
     if (!slots.has(id)) {
@@ -203,7 +203,7 @@ async function main() {
     const i = slots.get(id);
     if (i < SLOTS.length) return SLOTS[i];
     const a = (i * 2.399) % (2 * Math.PI); // golden-angle spread for crowds
-    return { x: 50 + Math.cos(a) * 36, y: 52 + Math.sin(a) * 34 };
+    return { x: 50 + Math.cos(a) * 34, y: 50 + Math.sin(a) * 30 };
   }
   function linkOf(id) { return peers.links.get(id); }
   function routeOf(id) { const l = linkOf(id); return l && l.state === 'open' ? l.route : null; }
@@ -485,11 +485,46 @@ async function main() {
     if (sp) sp.textContent = speedText(t);
   }
 
+  /* ---------- latest received: a one-line bar under the radar ---------- */
+  const latest = $('latest');
+  let latestSig = '';
+  function newestIn() {
+    for (const tid of order) {
+      const t = engine.all.get(tid);
+      if (t && t.dir === 'in' && t.status !== 'rejected') return t;
+    }
+    return null;
+  }
+  function renderLatest(force) {
+    const t = newestIn();
+    const sig = t ? [t.tid, sigOf(t), t.status === 'active' ? Math.round(frac(t) * 100) : ''].join('|') : '';
+    if (sig === latestSig && !force) return;
+    latestSig = sig;
+    latest.hidden = !t;
+    if (!t) { latest.innerHTML = ''; return; }
+    const dev = presence.get(t.peer) || known.get(t.peer);
+    const who = dev ? dev.name : tt('leftDevice');
+    const when = new Date(t.created).toLocaleTimeString(getLang(), { hour: '2-digit', minute: '2-digit' });
+    const body = t.kind === 'file' ? t.name : t.text != null ? t.text.replace(/\s+/g, ' ') : t.inline != null ? t.inline.replace(/\s+/g, ' ') : tt('item.text');
+    let end = '';
+    if (t.status === 'pending') end = `<button type="button" class="btn primary sm" data-act="accept" data-id="${t.tid}">${esc(tt('accept'))}</button>`;
+    else if (t.status === 'active' || t.status === 'verifying') end = `<span class="lt-pct">${Math.round(frac(t) * 100)}%</span>`;
+    else if (t.status === 'done' && t.kind === 'text') end = `<button type="button" class="btn ghost sm" data-act="copy" data-id="${t.tid}">${esc(tt('copy'))}</button>`;
+    else if (t.status === 'done') end = `<button type="button" class="btn primary sm" data-act="save" data-id="${t.tid}">${esc(tt('save'))}</button>`;
+    else if (t.status === 'failed' || t.status === 'canceled' || t.status === 'paused') end = `<span class="lt-pct">${esc(tt(t.status === 'failed' ? 'st.failed' : t.status === 'canceled' ? 'st.canceled' : 'st.pausedIn'))}</span>`;
+    latest.dataset.id = t.tid;
+    latest.innerHTML =
+      `<div class="ico">${svg(t.kind === 'file' ? 'file' : 'text', 20)}</div>` +
+      `<div class="meta"><div class="lt-head">${esc(tt('latest.from', { who }))} · ${esc(when)}</div><div class="lt-title">${esc(body)}</div></div>` +
+      `<div class="end">${end}</div>`;
+  }
+
   engine.addEventListener('update', (e) => {
     const t = e.detail;
     if (!order.includes(t.tid)) order.unshift(t.tid);
     if (rendered.get(t.tid) === sigOf(t)) patchProgress(t);
     else renderList();
+    renderLatest();
     keepAwake();
   });
 
@@ -501,7 +536,18 @@ async function main() {
     try { return !!(file && navigator.canShare && navigator.canShare({ files: [file] }) && /iPhone|iPad|Android/.test(navigator.userAgent)); } catch { return false; }
   }
 
-  list.addEventListener('click', async (e) => {
+  // Tapping the bar itself (not its button) jumps to that item in Activity.
+  latest.addEventListener('click', (e) => {
+    if (e.target.closest('[data-act]')) return;
+    const li = list.querySelector(`[data-id="${latest.dataset.id}"]`);
+    if (!li) return;
+    li.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+    li.classList.remove('flash');
+    void li.offsetWidth;
+    li.classList.add('flash');
+  });
+
+  async function onAct(e) {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const t = engine.all.get(b.dataset.id);
@@ -524,7 +570,9 @@ async function main() {
       const label = (s) => { b.textContent = tt(s); setTimeout(() => { b.textContent = tt('copy'); }, 1800); };
       try { await navigator.clipboard.writeText(t.text); label('copied'); } catch { label('copyFail'); }
     }
-  });
+  }
+  list.addEventListener('click', onAct);
+  latest.addEventListener('click', onAct);
 
   function updateTitle() {
     const n = [...engine.all.values()].filter((t) => t.dir === 'in' && t.status === 'pending').length;
@@ -705,6 +753,7 @@ async function main() {
     renderAll();
     renderStaged();
     renderList();
+    renderLatest(true);
     renderPairSub();
     if (pairMsgState) pairMsg.textContent = t(pairMsgState.key, pairMsgState.vars);
   });
