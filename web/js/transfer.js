@@ -2,7 +2,8 @@
 // Text frames: JSON control messages. Binary frames: [u32 idx][u64 offset][payload].
 
 import { Sha256, hashBlob } from './sha256.js';
-import { createSink } from './sinks.js';
+import { createSink, readSegments, discardSegments, segmentNames } from './sinks.js';
+import { kvGet, kvSet } from './identity.js';
 import { dlog } from './log.js';
 
 // 64 KiB per frame when the peer's SCTP stack allows it (many times faster than
@@ -14,6 +15,9 @@ const HIGH_WATER = 2 * 1024 * 1024;
 const ACK_EVERY = 512 * 1024;
 const INLINE_TEXT_MAX = 16 * 1024;
 const HEADER = 12;
+// Partly received files survive a reload for this long (see restore()).
+const PARTIALS_KEY = 'partials';
+const PARTIAL_TTL_MS = 24 * 3600 * 1000;
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -41,6 +45,8 @@ export class TransferEngine extends EventTarget {
     this.peers = peers;
     this.trusted = trusted;
     this.reconnects = new Map(); // peer -> { timer, attempt }
+    this.partials = {}; // tid -> what restore() needs to pick a partly received file up again
+    this.ready = new Promise((resolve) => { this.markReady = resolve; });
     this.all = new Map(); // tid -> transfer
     this.byIdx = new Map(); // `${peer}:${idx}` -> incoming transfer
     this.nextIdx = 1;
@@ -193,7 +199,8 @@ export class TransferEngine extends EventTarget {
       return;
     }
     t.hash = new Sha256();
-    t.sinkP = t.kind === 'file' ? createSink(t.tid, t.mime, t.size) : Promise.resolve(null);
+    t.sinkKey = t.sinkKey || t.tid;
+    t.sinkP = t.kind === 'file' ? this.openSink(t) : Promise.resolve(null);
     t.sinkP.then((sk) => dlog('xfer', 'in storage', { tid: t.tid.slice(0, 8), sink: sk ? sk.constructor.name : 'text-memory' }), () => {});
     t.textParts = t.kind === 'text' ? [] : null;
     this.ctl(link, { t: 'accept', tid: t.tid, offset: 0 });
@@ -255,6 +262,7 @@ export class TransferEngine extends EventTarget {
       const sink = await t.sinkP;
       t.file = await sink.finish(t.name);
       t.sinkDone = true;
+      this.dropPartial(t.tid);
     } else {
       const all = new Uint8Array(t.size);
       let o = 0;
@@ -334,8 +342,9 @@ export class TransferEngine extends EventTarget {
     }
   }
 
-  onMeta(link, m) {
+  async onMeta(link, m) {
     if (typeof m.tid !== 'string' || !/^[0-9a-f]{24}$/.test(m.tid)) return;
+    await this.ready;
     const existing = this.all.get(m.tid);
     if (existing) {
       // The sender reconnected and is offering again: resume where we stopped.
@@ -343,6 +352,7 @@ export class TransferEngine extends EventTarget {
       if (existing.status === 'done') {
         this.ctl(link, { t: 'ok', tid: existing.tid }); // we finished; the sender missed our ok
       } else if (existing.status === 'paused' && existing.started) {
+        if (existing.restored) await this.revive(existing);
         this.byIdx.set(link.peerId + ':' + m.idx, existing);
         existing.idx = m.idx;
         existing.status = 'active';
@@ -360,10 +370,34 @@ export class TransferEngine extends EventTarget {
     }
     const size = Number(m.size);
     if (!Number.isSafeInteger(size) || size < 0) return;
+    const name = String(m.name || 'file').replace(/[\\/\u0000-\u001f]/g, '_').slice(0, 200) || 'file';
+    // The sender's page was reloaded and the same file is being sent again under a new id:
+    // carry on from what we already have instead of starting over. The hash check at the end
+    // still catches a different file that happens to share the name and size.
+    const prev = m.kind !== 'text' && [...this.all.values()].find((x) => x.dir === 'in' && x.peer === link.peerId && x.kind === 'file' &&
+      x.status === 'paused' && x.started && x.name === name && x.size === size);
+    if (prev) {
+      dlog('xfer', 'in same file offered again: resuming', { old: prev.tid.slice(0, 8), tid: m.tid.slice(0, 8), have: prev.done });
+      if (prev.restored) await this.revive(prev);
+      this.all.delete(prev.tid);
+      const rec = this.partials[prev.tid];
+      if (rec) { delete this.partials[prev.tid]; this.partials[m.tid] = { ...rec, tid: m.tid, idx: m.idx >>> 0 }; this.savePartials(); }
+      prev.tid = m.tid;
+      prev.idx = m.idx >>> 0;
+      prev.route = link.route;
+      prev.status = 'active';
+      prev.error = null;
+      prev.speedBase = { at: performance.now(), bytes: prev.done };
+      this.all.set(prev.tid, prev);
+      this.byIdx.set(link.peerId + ':' + prev.idx, prev);
+      this.ctl(link, { t: 'accept', tid: prev.tid, offset: prev.done });
+      this.emit(prev);
+      return;
+    }
     const t = {
       tid: m.tid, idx: m.idx >>> 0, dir: 'in', peer: link.peerId, route: link.route,
       kind: m.kind === 'text' ? 'text' : 'file',
-      name: String(m.name || 'file').replace(/[\\/\u0000-\u001f]/g, '_').slice(0, 200) || 'file',
+      name,
       size, mime: String(m.mime || '').slice(0, 100), status: 'pending', done: 0, speed: 0, created: Date.now(),
       inline: typeof m.body === 'string' && m.kind === 'text' && m.body.length <= INLINE_TEXT_MAX ? m.body : null,
     };
@@ -483,10 +517,83 @@ export class TransferEngine extends EventTarget {
 
   async cleanup(t) {
     if (t.abort) t.abort.abort();
+    this.dropPartial(t.tid);
+    if (t.restored) discardSegments(t.sinkKey, t.segs.length + 1);
     if (t.dir === 'in' && t.sinkP && !t.sinkDone) {
       const s = await t.sinkP.catch(() => null);
       if (s) s.discard();
     }
+  }
+
+  // ---------- surviving a reload ----------
+
+  /** Open the storage for an accepted file, recording each finished segment so a reload can resume. */
+  async openSink(t, segs) {
+    const sink = await createSink(t.sinkKey, t.mime, t.size, segs);
+    if ('onCommit' in sink) {
+      sink.onCommit = (done) => {
+        this.partials[t.tid] = { tid: t.tid, key: t.sinkKey, idx: t.idx, peer: t.peer, name: t.name, size: t.size, mime: t.mime, created: t.created, segs: done, at: Date.now() };
+        return this.savePartials();
+      };
+    }
+    return sink;
+  }
+
+  savePartials() {
+    return kvSet(PARTIALS_KEY, this.partials).catch(() => {});
+  }
+
+  dropPartial(tid) {
+    if (!this.partials[tid]) return;
+    delete this.partials[tid];
+    this.savePartials();
+  }
+
+  /**
+   * At startup: bring back files that were partly received before the page was reloaded, as
+   * paused transfers. When the sender offers them again, revive() reopens the storage.
+   * Returns the storage file names to keep.
+   */
+  async restore() {
+    const keep = new Set();
+    try {
+      const saved = (await kvGet(PARTIALS_KEY)) || {};
+      for (const r of Object.values(saved)) {
+        if (!r || !Array.isArray(r.segs) || !r.segs.length || Date.now() - r.at > PARTIAL_TTL_MS || this.all.has(r.tid)) continue;
+        this.partials[r.tid] = r;
+        segmentNames(r.key, r.segs).forEach((n) => keep.add(n));
+        const t = {
+          tid: r.tid, idx: r.idx, dir: 'in', peer: r.peer, route: null, kind: 'file', name: r.name, size: r.size, mime: r.mime,
+          status: 'paused', done: r.segs.reduce((a, b) => a + b, 0), speed: 0, created: r.created || r.at,
+          started: true, restored: true, sinkKey: r.key, segs: r.segs,
+        };
+        this.all.set(t.tid, t);
+        dlog('xfer', 'in restored after reload', { tid: t.tid.slice(0, 8), have: t.done, size: t.size });
+        this.emit(t);
+      }
+      this.savePartials(); // forget expired ones
+    } catch (e) {
+      dlog('xfer', 'restore failed', { err: e.message });
+    }
+    this.markReady();
+    return keep;
+  }
+
+  /** Reopen a restored transfer: re-hash the saved bytes and append after them (or start over if they are gone). */
+  async revive(t) {
+    const saved = await readSegments(t.sinkKey, t.segs);
+    t.hash = new Sha256();
+    if (saved) {
+      for (let off = 0; off < saved.size; off += 4 * 1024 * 1024) t.hash.update(new Uint8Array(await saved.slice(off, off + 4 * 1024 * 1024).arrayBuffer()));
+    } else {
+      await discardSegments(t.sinkKey, t.segs.length + 1);
+      t.segs = [];
+    }
+    t.done = saved ? saved.size : 0;
+    t.textParts = null;
+    t.sinkP = this.openSink(t, t.segs);
+    t.restored = false;
+    dlog('xfer', 'in revived after reload', { tid: t.tid.slice(0, 8), from: t.done, savedOk: !!saved });
   }
 
   get busy() {

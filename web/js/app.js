@@ -87,7 +87,6 @@ async function main() {
   if (!window.RTCPeerConnection) throw new Error('start.noRtc');
   if (!window.isSecureContext) throw new Error('start.https');
   const me = await Identity.load();
-  cleanupStorage();
   dlog('app', 'boot', {
     id: me.id.slice(0, 8), name: me.name, kind: me.kind, lang: getLang(), paired: Object.keys(me.trusted).length,
     standalone: matchMedia('(display-mode: standalone)').matches || !!navigator.standalone,
@@ -437,6 +436,7 @@ async function main() {
       case 'paused':
         end = ringHTML(frac(t)) + cancelBtn(t);
         speed = `<span class="speed">${esc(tt(t.dir === 'out' ? 'st.pausedOut' : 'st.pausedIn'))}</span>`;
+        if (t.dir === 'in' && t.kind === 'file') note = `<span class="hint">${esc(tt('hint.resend'))}</span>`;
         break;
       case 'verifying':
         end = ringHTML(1);
@@ -470,6 +470,8 @@ async function main() {
   const sigOf = (t) => [t.status, t.error, t.route, t.text != null, !!presence.get(t.peer)].join('|');
 
   function renderList() {
+    // A transfer can be re-filed under a new id (the sender resent the same file): drop stale ids.
+    for (let i = order.length - 1; i >= 0; i--) if (!engine.all.has(order[i])) order.splice(i, 1);
     if (!order.length) {
       list.innerHTML = `<li class="empty">${esc(tt('list.empty'))}</li>`;
       return;
@@ -825,6 +827,8 @@ async function main() {
   renderAll();
   renderStaged();
   renderList();
+  // Bring back partly received files from before a reload, then clear out the rest of storage.
+  engine.restore().then((keep) => cleanupStorage(keep));
   renderPairSub();
   onLangChange(() => {
     renderAll();

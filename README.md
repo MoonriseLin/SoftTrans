@@ -89,7 +89,7 @@ Everything travels over one reliable, ordered **data channel**:
 2. The receiver accepts: automatically for a paired device, otherwise when the user taps **Accept**.
 3. The file is sent in **64 KB chunks**, or 16 KB if the other browser can't take larger messages. Sending uses backpressure, so a fast sender doesn't flood memory. The receiver reports progress, which drives the progress ring and speed shown on both sides.
 4. Both sides compute a **SHA-256 hash** of the whole file. The receiver keeps the file only if the hashes match.
-5. Large received files are written to the browser's private storage (OPFS) when it supports this, and otherwise kept as a Blob. Then you tap **Save**, or **Share** on phones. When several files have arrived, **Save all** saves them in one go (on phones, through a single share sheet).
+5. Large received files are written to the browser's private storage (OPFS) when it supports this, and otherwise kept as a Blob. Then you tap **Save**, or **Share** on phones. When several files have arrived, **Save all** saves them in one go (on phones, through a single share sheet). If either page is reloaded or the phone is locked during a transfer, it carries on from where it stopped once both pages are open again (if the sending page was reloaded, send the same file again).
 
 Either side can cancel. If the connection drops in the middle (a phone screen locking, Wi-Fi changing), the transfer pauses. When the devices reconnect, it continues from where it stopped.
 

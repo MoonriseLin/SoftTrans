@@ -190,6 +190,44 @@ try {
   });
   check(midGot === midHash, 'reconnected by itself and finished with the right bytes');
 
+  const bLog = [];
+  b.on('console', (m) => bLog.push(m.text()));
+  const hashIn = (n) => b.evaluate(async (name) => {
+    const t = [...softdrop.engine.all.values()].find((x) => x.name === name && x.status === 'done');
+    const h = await crypto.subtle.digest('SHA-256', await t.file.arrayBuffer());
+    return Array.from(new Uint8Array(h), (x) => x.toString(16).padStart(2, '0')).join('');
+  }, n);
+
+  step('the receiving page is reloaded mid-transfer');
+  const rl = randomBytes(48 * 1024 * 1024);
+  const rlHash = createHash('sha256').update(rl).digest('hex');
+  await a.setInputFiles('#fileInput', { name: 'reload-rx.bin', mimeType: 'application/octet-stream', buffer: rl });
+  await a.click('#send');
+  await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'reload-rx.bin' && t.done > 36 * 1024 * 1024), null, { timeout: 60000 });
+  await b.reload();
+  await b.waitForFunction(() => window.softdrop && softdrop.sig.state === 'open');
+  await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'reload-rx.bin' && t.status === 'done'), null, { timeout: 90000 });
+  const revived = bLog.find((l) => /in revived after reload/.test(l)) || '';
+  const from = Number((revived.match(/from=(\d+)/) || [])[1] || 0);
+  check(from >= 16 * 1024 * 1024, `resumed after the reload from ${(from / 1e6).toFixed(1)} MB, not from zero`);
+  check((await hashIn('reload-rx.bin')) === rlHash, 'file complete and correct after the receiver reloaded');
+
+  step('the sending page is reloaded, then the same file is sent again');
+  const sx = randomBytes(40 * 1024 * 1024);
+  const sxHash = createHash('sha256').update(sx).digest('hex');
+  await a.setInputFiles('#fileInput', { name: 'reload-tx.bin', mimeType: 'application/octet-stream', buffer: sx });
+  await a.click('#send');
+  await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'reload-tx.bin' && t.done > 20 * 1024 * 1024), null, { timeout: 60000 });
+  await a.reload();
+  await a.waitForFunction(() => window.softdrop && softdrop.sig.state === 'open');
+  await a.waitForSelector(`.device[data-id="${idB}"][aria-pressed="true"]`, { timeout: 10000 });
+  await a.setInputFiles('#fileInput', { name: 'reload-tx.bin', mimeType: 'application/octet-stream', buffer: sx });
+  await a.click('#send');
+  await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'reload-tx.bin' && t.status === 'done'), null, { timeout: 90000 });
+  check(bLog.some((l) => /same file offered again: resuming/.test(l)), 'receiver continued the old partial file');
+  check((await hashIn('reload-tx.bin')) === sxHash, 'file complete and correct after the sender reloaded');
+  check((await b.$$eval('#list .item', (els) => els.filter((e) => e.textContent.includes('reload-tx.bin')).length)) === 1, 'one Activity item for the resumed file');
+
   step('a silent link is dropped when the page comes back');
   await b.evaluate(() => { const e = softdrop.engine, orig = e.ctl; e.ctl = (l, m) => (m.t === 'pong' ? undefined : orig.call(e, l, m)); });
   await a.evaluate(() => softdrop.engine.probeLinks());
@@ -200,7 +238,8 @@ try {
 
   step('activity list');
   const ids = await a.$$eval('.list .item', (els) => els.map((e) => e.dataset.id));
-  check(ids.length === new Set(ids).size && ids.length === 9, `sender lists each transfer once (${ids.length} items)`);
+  // The sender page was reloaded in the reload test, so only the resent file is listed since then.
+  check(ids.length === new Set(ids).size && ids.length === 1, `sender lists each transfer once (${ids.length} items)`);
 
   step('language');
   const langOf = (p) => p.evaluate(() => ({ html: document.documentElement.lang, send: document.getElementById('send').textContent, nearby: document.getElementById('nearbyTitle').textContent, ph: document.getElementById('text').placeholder, stored: localStorage.getItem('softdrop-lang') }));
