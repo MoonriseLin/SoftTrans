@@ -31,7 +31,7 @@ Each device generates an ECDSA P-256 keypair with WebCrypto on first run and sto
 | `peer-joined` | `peer` | A device appeared. |
 | `peer-left` | `id` | A device disappeared. |
 | `signal` | `from`, `kind`, `data`, `sig` | A forwarded message. The server never alters `data` or `sig`. |
-| `pair-code` | `code`, `ttl` | A 6-digit code, valid for `ttl` seconds (300). |
+| `pair-code` | `code`, `ttl` | A 4-digit code, valid for `ttl` seconds (300). |
 | `paired` | `peer` | Pairing succeeded for both sides. |
 | `error` | `code`, `msg` | For example `bad-code`, `rate-limited`, `unknown-peer`. |
 | `pong` | none | Keepalive reply. |
@@ -135,5 +135,7 @@ The label can change if ICE restarts. Update the UI when it does.
 **Route label.** `lan` = local host with remote host, or a peer-reflexive private address. `direct` = any other non-relay path. `relay` = either side relay. Labels: "Direct · same Wi-Fi", "Direct", "Via relay". The label is re-read every 4 s while the link is open.
 
 **Pairing SAS.** 6 digits: the first 4 bytes of SHA-256(`softdrop/sas\n` + the two public keys sorted and joined by `\n`), mod 10^6. A peer is stored as trusted only after the user taps "They match".
+
+**Auto-accept.** The receiver sends `accept` as soon as `meta` arrives; the user is not asked. A transfer stays `pending` (with Accept and Decline buttons) only if the link drops before the accept can go out. Pairing codes are 4 digits (`pair-code`); the SAS stays 6 digits.
 
 **Testing switch.** `?relay=1` in the page URL forces `iceTransportPolicy: 'relay'` for that device.

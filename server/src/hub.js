@@ -200,11 +200,12 @@ export class Hub {
   onPairCreate(c) {
     if (!this.pairCreateLimit.take(c.ip)) return c.error('rate-limited', 'Too many codes. Try again in a few minutes.');
     this.dropCodesOf(c.id);
-    let code;
-    do code = pairCode(); while (this.codes.has(code));
+    let code, tries = 0;
+    do code = pairCode(); while (this.codes.has(code) && ++tries < 50);
+    if (this.codes.has(code)) return c.error('rate-limited', 'Too many codes in use. Try again in a minute.');
     this.codes.set(code, { id: c.id, expires: Date.now() + PAIR_TTL_S * 1000 });
     c.send({ t: 'pair-code', code, ttl: PAIR_TTL_S });
-    this.log('info', 'pair.code', { ...c.tag(), code: code.slice(0, 2) + '****', ttl: PAIR_TTL_S });
+    this.log('info', 'pair.code', { ...c.tag(), code: code.slice(0, 1) + '***', ttl: PAIR_TTL_S });
   }
 
   onPairJoin(c, m) {

@@ -51,31 +51,20 @@ try {
   check(toText.includes(process.env.WANT_LABEL || 'Direct · same Wi-Fi'), `send card shows "${toText.trim()}"`);
   await a.fill('#text', 'Meet at the east gate at 6 🌸');
   await a.click('#send');
-  await b.waitForSelector('[data-act="accept"]', { timeout: 5000 });
-  check((await b.title()).startsWith('(1)'), 'receiver title shows pending count');
-  await b.click('[data-act="accept"]');
   await b.waitForSelector('.preview', { timeout: 5000 });
   check((await b.textContent('.preview')) === 'Meet at the east gate at 6 🌸', 'receiver shows the text');
   await a.waitForFunction(() => document.querySelector('.done')?.textContent.includes('Sent'), null, { timeout: 5000 });
   check(true, 'sender shows Sent');
-
-  step('decline');
-  await a.fill('#text', 'nope');
-  await a.click('#send');
-  await b.waitForSelector('[data-act="decline"]');
-  await b.click('[data-act="decline"]');
-  await a.waitForFunction(() => document.querySelector('.list .item .muted')?.textContent === 'Declined', null, { timeout: 5000 });
-  check(true, 'sender sees Declined');
+  check(!(await b.$('[data-act="accept"]')), 'receiver accepted without asking');
+  check(await b.isHidden('#debugPanel'), 'log panel hidden without ?debug=1');
 
   for (const size of [0, 70000, 12 * 1024 * 1024 + 7]) {
     step(`file transfer, ${size} bytes`);
     const data = randomBytes(size);
     const want = createHash('sha256').update(data).digest('hex');
     await a.setInputFiles('#fileInput', { name: `blob-${size}.bin`, mimeType: 'application/octet-stream', buffer: data });
-    await a.click('#send');
-    await b.waitForSelector('[data-act="accept"]', { timeout: 5000 });
     const t0 = Date.now();
-    await b.click('[data-act="accept"]');
+    await a.click('#send');
     await b.waitForFunction((n) => [...softdrop.engine.all.values()].some((t) => t.name === n && t.status === 'done'), `blob-${size}.bin`, { timeout: 60000 });
     const secs = (Date.now() - t0) / 1000;
     const got = await b.evaluate(async (n) => {
@@ -94,9 +83,9 @@ try {
   const big = randomBytes(40 * 1024 * 1024);
   await a.setInputFiles('#fileInput', { name: 'big.bin', mimeType: 'application/octet-stream', buffer: big });
   await a.click('#send');
-  await b.waitForSelector('[data-act="accept"]');
-  await b.click('[data-act="accept"]');
   await a.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'big.bin' && t.done > 0), null, { timeout: 10000 });
+  const prog = await a.textContent('.item:has-text("big.bin") [data-speed]');
+  check(/^[\d.]+ (KB|MB) \/ 41\.9 MB/.test(prog), `progress shows sizes: "${prog}"`);
   await a.click('.item:has-text("big.bin") [data-act="cancel"]');
   await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'big.bin' && t.status === 'canceled'), null, { timeout: 5000 });
   check(true, 'receiver sees the cancel');
@@ -132,14 +121,12 @@ try {
   step('transfer after the receiver reloaded (fresh connection)');
   await a.fill('#text', 'after reload');
   await a.click('#send');
-  await b.waitForSelector('[data-act="accept"]', { timeout: 20000 });
-  await b.click('[data-act="accept"]');
-  await b.waitForSelector('.preview');
-  check((await b.textContent('.preview')) === 'after reload', 'text arrives on the new connection');
+  await b.waitForFunction(() => [...document.querySelectorAll('.preview')].some((x) => x.textContent === 'after reload'), null, { timeout: 20000 });
+  check(true, 'text arrives on the new connection');
 
   step('activity list');
   const ids = await a.$$eval('.list .item', (els) => els.map((e) => e.dataset.id));
-  check(ids.length === new Set(ids).size && ids.length === 7, `sender lists each transfer once (${ids.length} items)`);
+  check(ids.length === new Set(ids).size && ids.length === 6, `sender lists each transfer once (${ids.length} items)`);
 
   step('language');
   const langOf = (p) => p.evaluate(() => ({ html: document.documentElement.lang, send: document.getElementById('send').textContent, nearby: document.getElementById('nearbyTitle').textContent, ph: document.getElementById('text').placeholder, stored: localStorage.getItem('softdrop-lang') }));

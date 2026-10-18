@@ -15,7 +15,7 @@ Nothing to install. On iPhone or Android you can add the page to your Home Scree
 1. Open the page on both devices. If they are on the same Wi-Fi, each one appears on the other's radar within a second or two.
 2. Tap the device you want to send to.
 3. Type or paste text, or drop or choose files, then tap **Send**.
-4. The other device shows the transfer with **Accept** and **Decline**. Nothing is saved until the receiver accepts.
+4. The other device starts receiving right away, with no confirmation step. Both sides show the progress as received / total size (for example `50.5 MB / 200.3 MB`) and the speed.
 5. Each transfer shows how it travels:
    - **Direct · same Wi-Fi**: device to device on your local network. This is the fastest path, and it costs the server nothing.
    - **Direct**: device to device across the internet, via NAT traversal.
@@ -23,7 +23,7 @@ Nothing to install. On iPhone or Android you can add the page to your Home Scree
 
 **Devices on different networks** (for example a phone on mobile data and a laptop at home) pair once:
 
-1. On one device, tap **Get a code**. A 6-digit code appears, valid for 5 minutes.
+1. On one device, tap **Get a code**. A 4-digit code appears, valid for 5 minutes.
 2. Type the code on the other device and tap **Pair**.
 3. Both screens show the same 6-digit check number. If they match, tap **They match**.
 
@@ -57,7 +57,7 @@ There are no accounts. Identity is per device (per browser).
 
 The page opens a WebSocket to the server. The server sends a random challenge, and the device signs it with its private key. The server accepts the device only if the signature checks out and the ID matches the key.
 
-The server then groups devices by the **public IP address** it sees. IPv6 addresses are grouped by their /64 prefix. Devices behind the same home router share a public IP, so they appear to each other as **nearby** without any setup. Behind a big shared NAT (offices, campuses, mobile carriers), strangers can land in the same group. That is why the receiver must always accept a transfer.
+The server then groups devices by the **public IP address** it sees. IPv6 addresses are grouped by their /64 prefix. Devices behind the same home router share a public IP, so they appear to each other as **nearby** without any setup. Behind a big shared NAT (offices, campuses, mobile carriers), strangers can land in the same group. Incoming transfers start without asking, so anyone in your group can send to you. The page always shows who is nearby and who each transfer is from.
 
 **Paired devices** are visible to each other on any network. The server shows two devices to each other only when *both* say they trust the other. It keeps this only in memory and stores nothing on disk.
 
@@ -87,7 +87,7 @@ The label comes from the connection the browser actually selected (`getStats()`)
 Everything travels over one reliable, ordered **data channel**:
 
 1. The sender announces the transfer with its name, size and type. Short text up to 16 KB travels inside this announcement.
-2. The receiver **accepts** or **declines**.
+2. The receiver accepts automatically and opens its storage.
 3. The file is sent in **64 KB chunks**, or 16 KB if the other browser can't take larger messages. Sending uses backpressure, so a fast sender doesn't flood memory. The receiver reports progress, which drives the progress ring and speed shown on both sides.
 4. Both sides compute a **SHA-256 hash** of the whole file. The receiver keeps the file only if the hashes match.
 5. Large received files are written to the browser's private storage (OPFS) when it supports this, and otherwise kept as a Blob. Then you tap **Save**, or **Share** on phones.
@@ -113,7 +113,7 @@ There are no accounts, no tracking and no analytics.
 - **Very large files on iPhone** can hit Safari's memory limits.
 - Opening Softdrop in a second tab on the same browser moves the device to the newest tab.
 - Add `?relay=1` to the address to force the relay path, which is useful for testing.
-- Add `?debug=1` to the address to turn on **debug mode**. The page then shows a live log of connection and transfer steps, and sends it to the server log. `?debug=0` turns it off. On the server, `sh deploy/logs.sh` follows the logs.
+- **Debug log**: the page records each connection and transfer step and sends it to the server log. The log panel is hidden; add `?debug=1` to the address to show it. `?debug=0` stops recording. On the server, `sh deploy/logs.sh` follows the logs.
 
 ---
 

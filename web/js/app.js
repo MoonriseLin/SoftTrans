@@ -26,8 +26,8 @@ function svg(name, size = 22) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 }
 
+// Under 1 MB in KB, under 1 GB in MB, else GB.
 function fmtB(b) {
-  if (b < 1000) return b + ' B';
   if (b < 1e6) return (b / 1e3).toFixed(b < 1e4 ? 1 : 0) + ' KB';
   if (b < 1e9) return (b / 1e6).toFixed(1) + ' MB';
   return (b / 1e9).toFixed(2) + ' GB';
@@ -357,7 +357,7 @@ async function main() {
   }
   const cancelBtn = (t) => `<button type="button" class="cancel-x" data-act="cancel" data-id="${t.tid}" aria-label="${esc(tt('cancel'))}">${svg('x', 14)}</button>`;
   const frac = (t) => (t.size ? t.done / t.size : t.status === 'done' ? 1 : 0);
-  const speedText = (t) => (t.speed > 0 ? (t.speed / 1e6).toFixed(1) + ' MB/s' : '');
+  const speedText = (t) => `${fmtB(t.done)} / ${fmtB(t.size)}` + (t.speed > 0 ? ` · ${fmtB(t.speed)}/s` : '');
 
   function itemHTML(t, isNew) {
     const p = presence.get(t.peer) || known.get(t.peer);
@@ -545,7 +545,7 @@ async function main() {
     const c = codeState.code;
     // The template is plain text; the code is digits only, so it can be wrapped safely.
     $('pairSub').innerHTML = esc(t('pair.yourCode', { code: '\u0000', time: `${mm}:${ss}` }))
-      .replace('\u0000', `<span class="code">${c.slice(0, 3)} ${c.slice(3)}</span>`);
+      .replace('\u0000', `<span class="code">${c}</span>`);
     $('codeBtn').textContent = t('pair.newCode');
   }
   function resetCode() {
@@ -566,14 +566,14 @@ async function main() {
     setPairMsg(null);
   });
   pairInput.addEventListener('input', () => {
-    const digits = pairInput.value.replace(/\D/g, '').slice(0, 6);
-    pairInput.value = digits.length > 3 ? digits.slice(0, 3) + ' ' + digits.slice(3) : digits;
-    pairBtn.disabled = digits.length !== 6;
+    const digits = pairInput.value.replace(/\D/g, '').slice(0, 4);
+    pairInput.value = digits;
+    pairBtn.disabled = digits.length !== 4;
   });
   $('pairForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const digits = pairInput.value.replace(/\D/g, '');
-    if (digits.length !== 6) return;
+    if (digits.length !== 4) return;
     if (sig.state !== 'open') { setPairMsg('pair.notReady'); return; }
     setPairMsg('pair.pairing');
     sig.send({ t: 'pair-join', code: digits });
@@ -703,7 +703,8 @@ function setupDebugPanel(sig) {
   if (!debugOn()) return;
   const panel = $('debugPanel');
   const pre = $('debugLines');
-  panel.hidden = false;
+  // Logs are always recorded and sent to the server; the panel only shows with ?debug=1.
+  panel.hidden = new URLSearchParams(location.search).get('debug') !== '1';
   pre.textContent = allLines().join('\n');
   let stick = true;
   pre.addEventListener('scroll', () => { stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8; });

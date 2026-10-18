@@ -68,7 +68,7 @@ const en = {
 
   'pair.aria': 'Pair a device on another network',
   'pair.title': 'Different network?',
-  'pair.sub': 'Pair once with a 6-digit code. Paired devices find each other anywhere.',
+  'pair.sub': 'Pair once with a 4-digit code. Paired devices find each other anywhere.',
   'pair.getCode': 'Get a code',
   'pair.newCode': 'New code',
   'pair.inputAria': 'Pairing code from the other device',
@@ -204,7 +204,7 @@ const zh = {
 
   'pair.aria': '配对其他网络中的设备',
   'pair.title': '不在同一个网络？',
-  'pair.sub': '用 6 位数字配对一次，之后在任何网络都能找到彼此。',
+  'pair.sub': '用 4 位数字配对一次，之后在任何网络都能找到彼此。',
   'pair.getCode': '获取配对码',
   'pair.newCode': '换一个配对码',
   'pair.inputAria': '另一台设备上的配对码',
@@ -340,7 +340,7 @@ const zhHant = {
 
   'pair.aria': '配對其他網路中的裝置',
   'pair.title': '不在同一個網路？',
-  'pair.sub': '用 6 位數字配對一次，之後在任何網路都能找到彼此。',
+  'pair.sub': '用 4 位數字配對一次，之後在任何網路都能找到彼此。',
   'pair.getCode': '取得配對碼',
   'pair.newCode': '換一組配對碼',
   'pair.inputAria': '另一台裝置上的配對碼',
@@ -476,7 +476,7 @@ const ja = {
 
   'pair.aria': '別のネットワークのデバイスとペアリング',
   'pair.title': '別のネットワーク？',
-  'pair.sub': '6 桁のコードで一度ペアリングすれば、どこにいても見つけ合えます。',
+  'pair.sub': '4 桁のコードで一度ペアリングすれば、どこにいても見つけ合えます。',
   'pair.getCode': 'コードを表示',
   'pair.newCode': '新しいコード',
   'pair.inputAria': '相手のデバイスのペアリングコード',

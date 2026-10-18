@@ -18,12 +18,12 @@ Build steps 1–5 and 7 are working, and step 6 is partly done. The app is deplo
 
 - `server/`: signaling server in plain JavaScript (ESM) on Node 20 with `ws`. No build step. `npm test` runs the hub unit tests.
 - `web/`: the live app, ported from the prototype. It uses no-build ES modules and serves under a strict CSP, so it has no inline scripts or styles.
-- `e2e/run.mjs`: a two-browser Playwright test covering presence, text and file transfer, hash check, decline, cancel, pairing with SAS, and reload. It runs locally or against production, with an optional forced relay.
+- `e2e/run.mjs`: a two-browser Playwright test covering presence, text and file transfer, hash check, auto-accept, progress sizes, cancel, pairing with SAS, and reload. It runs locally or against production, with an optional forced relay.
 - `deploy/`: nginx, systemd and coturn configs, `install.sh`, and `logs.sh` to follow the logs.
-- Debugging: debug mode is currently on by default (`DEBUG_DEFAULT` in `web/js/log.js`; set it to false after testing). `?debug=0` or `?debug=1` overrides it per browser. Debug mode shows a log panel and streams page logs to the server journal. Use `dlog()` from `web/js/log.js` for new client events. Server events go through `log()` in `server/src/log.js`. Never log file contents, keys or full pairing codes.
+- Debugging: debug mode is currently on by default (`DEBUG_DEFAULT` in `web/js/log.js`; set it to false after testing). `?debug=0` or `?debug=1` overrides it per browser. Debug mode records page logs and streams them to the server journal; the log panel is hidden unless the URL has `?debug=1`. Use `dlog()` from `web/js/log.js` for new client events. Server events go through `log()` in `server/src/log.js`. Never log file contents, keys or full pairing codes.
 - `prototype/index.html` is still the visual reference. It is no longer the app.
 
-Not done yet: resume after a page reload, tests on real phones and routers (iOS Safari especially), and auto-accept for paired devices. Signaling language decision: plain JS on Node.
+Not done yet: resume after a page reload, tests on real phones and routers (iOS Safari especially). Signaling language decision: plain JS on Node.
 
 Read these before building:
 
@@ -44,7 +44,7 @@ Phone (PWA) ──┐                         ┌── Computer (browser)
    4. TURN relay through the VPS         last resort
 ```
 
-Device grouping: the signaling server groups connections that share the same public IP as seen by the server. Those devices appear to each other automatically as "nearby". Devices on different networks pair with a 6-digit code instead.
+Device grouping: the signaling server groups connections that share the same public IP as seen by the server. Those devices appear to each other automatically as "nearby". Devices on different networks pair with a 4-digit code instead.
 
 ## Design rules to keep when porting the prototype
 
@@ -64,7 +64,7 @@ Device grouping: the signaling server groups connections that share the same pub
 1. Signaling server: WebSocket, device presence, grouping by public IP, relaying offers, answers and ICE candidates.
 2. WebRTC connection between two pages. Read `RTCPeerConnection.getStats()` for the selected candidate pair to drive the route label (host/host: "Direct · same Wi-Fi", srflx: "Direct", relay: "Via relay").
 3. Data-channel transfer protocol: metadata, accept or reject, chunking with backpressure, hash check.
-4. Pairing by 6-digit code for devices on different networks.
+4. Pairing by 4-digit code for devices on different networks.
 5. Device identity and end-to-end verification (keypairs, signed signaling, pinned DTLS fingerprint).
 6. Resumable transfers, progress, cancel.
 7. PWA: manifest and service worker (needs HTTPS), install prompt on iOS ("Add to Home Screen").
@@ -79,7 +79,7 @@ Replace the simulated parts of the prototype one step at a time. Keep the UI wor
 - **iOS Safari:** transfers stop when the page is backgrounded or the screen locks. Keep the page open and consider the Screen Wake Lock API during a transfer. Safari may show a Local Network permission prompt. Large files can hit memory limits when reassembled in the page, so write chunks to storage rather than holding everything in memory where possible.
 - **Saving large received files:** streaming straight to a chosen file (`showSaveFilePicker`) works in desktop Chromium browsers but not in Safari. Plan a fallback such as the Origin Private File System or a Blob download, and verify browser support before relying on any of them.
 - **Multiple network interfaces** (VPN, Docker, hotspot) create extra candidates. Let ICE choose, and judge the route from the selected pair.
-- **Public-IP grouping** can group strangers behind a shared NAT (offices, campus networks, carrier-grade NAT). Always show who is nearby, and require the receiver to accept transfers from unknown devices.
+- **Public-IP grouping** can group strangers behind a shared NAT (offices, campus networks, carrier-grade NAT). Always show who is nearby and who each transfer is from.
 - **IPv6:** devices on one home network may show different public IPv6 addresses. Group IPv6 clients by their /64 prefix.
 
 ## Security requirements
@@ -88,8 +88,8 @@ Replace the simulated parts of the prototype one step at a time. Keep the UI wor
 - Each device holds a long-term keypair (WebCrypto, ECDSA P-256 for broad browser support). The device ID is derived from the public key.
 - Sign signaling messages. Pin the DTLS fingerprint received in the signed offer and answer.
 - Pairing exchanges and verifies public keys. Show a short authentication string or QR code on both sides.
-- The receiver must accept an incoming transfer, at least for devices it has not paired with.
-- Pairing codes: 6 digits, expire after 5 minutes, single use, rate limited per IP.
+- Incoming transfers are accepted automatically (owner's decision, October 2026). The accept/decline protocol messages and the pending UI stay as a fallback, so a confirmation step can come back, for example for unpaired devices.
+- Pairing codes: 4 digits (owner's choice), expire after 5 minutes, single use, rate limited per IP.
 - TURN credentials are time-limited (REST style), generated by the signaling server. See `docs/deploy-notes.md`.
 - Relay without storing: the VPS never writes transfer data to disk.
 

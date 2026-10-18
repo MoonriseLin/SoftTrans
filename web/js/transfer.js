@@ -344,6 +344,7 @@ export class TransferEngine extends EventTarget {
       } else if (existing.status === 'pending') {
         this.byIdx.set(link.peerId + ':' + m.idx, existing);
         existing.idx = m.idx;
+        this.accept(existing);
       }
       return;
     }
@@ -359,6 +360,9 @@ export class TransferEngine extends EventTarget {
     this.all.set(t.tid, t);
     this.byIdx.set(link.peerId + ':' + t.idx, t);
     this.emit(t);
+    // Incoming transfers start without asking; "pending" remains only if the link drops first.
+    dlog('xfer', 'in auto-accept', { tid: t.tid.slice(0, 8) });
+    this.accept(t);
   }
 
   onLinkOpen(link) {

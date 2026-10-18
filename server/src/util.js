@@ -32,7 +32,7 @@ export function nonce() {
 }
 
 export function pairCode() {
-  return String(randomInt(0, 1_000_000)).padStart(6, '0');
+  return String(randomInt(0, 10_000)).padStart(4, '0');
 }
 
 /**

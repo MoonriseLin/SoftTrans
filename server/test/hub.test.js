@@ -98,7 +98,7 @@ test('pairing codes are single use and link devices across networks once both co
   const cb = await join(hub, b, '198.51.100.9');
   await ca.send({ t: 'pair-create' });
   const { code, ttl } = ca.take('pair-code');
-  assert.match(code, /^\d{6}$/);
+  assert.match(code, /^\d{4}$/);
   assert.equal(ttl, 300);
 
   await ca.send({ t: 'pair-join', code });
