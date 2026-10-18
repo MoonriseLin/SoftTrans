@@ -13,6 +13,7 @@ cp -a shadowrocket /opt/softdrop/shadowrocket
 chown -R root:root /opt/softdrop
 install -m 0644 deploy/softdrop.service /etc/systemd/system/softdrop.service
 install -m 0644 deploy/softdrop-rules.service deploy/softdrop-rules.timer /etc/systemd/system/
+install -m 0644 deploy/logrotate-nginx /etc/logrotate.d/nginx
 install -d -m 0755 /var/www/softdrop-rules
 systemctl daemon-reload
 systemctl enable --now softdrop-rules.timer
