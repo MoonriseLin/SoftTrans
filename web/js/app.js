@@ -252,14 +252,22 @@ async function main() {
   radar.addEventListener('click', (e) => {
     const b = e.target.closest('.device');
     if (!b) return;
-    selected = b.dataset.id;
-    dlog('app', 'selected', { peer: selected.slice(0, 8), link: peers.links.get(selected)?.state || 'none' });
-    // Warm up the connection so the route label is ready and sending starts at once.
-    peers.get(selected).ready().catch(() => {});
+    select(b.dataset.id);
     renderRadar();
     renderTo();
     updateSend();
   });
+  function select(id, auto) {
+    selected = id;
+    dlog('app', auto ? 'auto-selected (only device)' : 'selected', { peer: id.slice(0, 8), link: peers.links.get(id)?.state || 'none' });
+    // Warm up the connection so the route label is ready and sending starts at once.
+    peers.get(id).ready().catch(() => {});
+  }
+  // With exactly one device around, it is the target without a tap.
+  function autoSelect() {
+    if (presence.size !== 1 || (selected && presence.has(selected))) return;
+    select(presence.keys().next().value, true);
+  }
 
   /* ---------- send card ---------- */
   const ta = $('text');
@@ -740,6 +748,7 @@ async function main() {
 
   /* ---------- go ---------- */
   function renderAll() {
+    autoSelect();
     renderRadar();
     renderTo();
     updateSend();

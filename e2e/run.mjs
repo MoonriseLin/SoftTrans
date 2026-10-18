@@ -43,7 +43,8 @@ try {
   check(true, 'both devices appear on each other\'s radar');
 
   step('text transfer');
-  await a.click(`.device[data-id="${idB}"]`);
+  await a.waitForSelector(`.device[data-id="${idB}"][aria-pressed="true"]`, { timeout: 5000 });
+  check(true, 'the only nearby device is selected without a tap');
   await a.waitForFunction((id) => softdrop.peers.links.get(id)?.state === 'open', idB, { timeout: 15000 });
   const route = await a.evaluate((id) => softdrop.peers.links.get(id).route, idB);
   check(route === (process.env.WANT_ROUTE || 'lan'), `route detected as ${route}`);

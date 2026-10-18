@@ -13,7 +13,7 @@ Nothing to install. On iPhone or Android you can add the page to your Home Scree
 ## Using it
 
 1. Open the page on both devices. If they are on the same Wi-Fi, each one appears on the other's radar within a second or two.
-2. Tap the device you want to send to.
+2. Tap the device you want to send to. If it is the only device nearby, it is already selected.
 3. Type text, tap **Paste** to bring in whatever is on the clipboard (text or an image), or drop or choose files, then tap **Send**.
 4. The other device starts receiving right away, with no confirmation step. Both sides show the progress as received / total size (for example `50.5 MB / 200.3 MB`) and the speed.
 5. Each transfer shows how it travels:
