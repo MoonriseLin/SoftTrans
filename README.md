@@ -15,7 +15,7 @@ Nothing to install. On iPhone or Android you can add the page to your Home Scree
 1. Open the page on both devices. If they are on the same Wi-Fi, each one appears on the other's radar within a second or two.
 2. Tap the device you want to send to. If it is the only device nearby, it is already selected.
 3. Type text, tap **Paste** to bring in whatever is on the clipboard (text or an image), or drop or choose files, then tap **Send**.
-4. The other device starts receiving right away, with no confirmation step. Both sides show the progress as received / total size (for example `50.5 MB / 200.3 MB`) and the speed.
+4. If the two devices are paired, the other device starts receiving right away. Otherwise it shows **Accept** and **Decline** first. Both sides show the progress as received / total size (for example `50.5 MB / 200.3 MB`) and the speed.
 5. Each transfer shows how it travels:
    - **Direct · same Wi-Fi**: device to device on your local network. This is the fastest path, and it costs the server nothing.
    - **Direct**: device to device across the internet, via NAT traversal.
@@ -56,7 +56,7 @@ There are no accounts. Identity is per device (per browser).
 
 The page opens a WebSocket to the server. The server sends a random challenge, and the device signs it with its private key. The server accepts the device only if the signature checks out and the ID matches the key.
 
-The server then groups devices by the **public IP address** it sees. IPv6 addresses are grouped by their /64 prefix. Devices behind the same home router share a public IP, so they appear to each other as **nearby** without any setup. Behind a big shared NAT (offices, campuses, mobile carriers), strangers can land in the same group. Incoming transfers start without asking, so anyone in your group can send to you. The page always shows who is nearby and who each transfer is from.
+The server then groups devices by the **public IP address** it sees. IPv6 addresses are grouped by their /64 prefix. Devices behind the same home router share a public IP, so they appear to each other as **nearby** without any setup. Behind a big shared NAT (offices, campuses, mobile carriers), strangers can land in the same group. That is why only paired devices can send without asking; anyone else needs the receiver to tap **Accept**.
 
 **Paired devices** are visible to each other on any network. The server shows two devices to each other only when *both* say they trust the other. It keeps this only in memory and stores nothing on disk.
 
@@ -86,7 +86,7 @@ The label comes from the connection the browser actually selected (`getStats()`)
 Everything travels over one reliable, ordered **data channel**:
 
 1. The sender announces the transfer with its name, size and type. Short text up to 16 KB travels inside this announcement.
-2. The receiver accepts automatically and opens its storage.
+2. The receiver accepts: automatically for a paired device, otherwise when the user taps **Accept**.
 3. The file is sent in **64 KB chunks**, or 16 KB if the other browser can't take larger messages. Sending uses backpressure, so a fast sender doesn't flood memory. The receiver reports progress, which drives the progress ring and speed shown on both sides.
 4. Both sides compute a **SHA-256 hash** of the whole file. The receiver keeps the file only if the hashes match.
 5. Large received files are written to the browser's private storage (OPFS) when it supports this, and otherwise kept as a Blob. Then you tap **Save**, or **Share** on phones.

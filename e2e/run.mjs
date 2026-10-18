@@ -52,11 +52,13 @@ try {
   check(toText.includes(process.env.WANT_LABEL || 'Direct · same Wi-Fi'), `send card shows "${toText.trim()}"`);
   await a.fill('#text', 'Meet at the east gate at 6 🌸');
   await a.click('#send');
+  await b.waitForSelector('[data-act="accept"]', { timeout: 5000 });
+  check((await b.title()).startsWith('(1)'), 'unpaired sender: receiver is asked first');
+  await b.click('#list [data-act="accept"]');
   await b.waitForSelector('.preview', { timeout: 5000 });
   check((await b.textContent('.preview')) === 'Meet at the east gate at 6 🌸', 'receiver shows the text');
   await a.waitForFunction(() => document.querySelector('.done')?.textContent.includes('Sent'), null, { timeout: 5000 });
   check(true, 'sender shows Sent');
-  check(!(await b.$('[data-act="accept"]')), 'receiver accepted without asking');
   check(await b.isHidden('#debugPanel'), 'log panel hidden without ?debug=1');
   check(/east gate/.test(await b.textContent('#latest .lt-title')), 'latest-received bar shows the text');
   const sections = await b.$$eval('main > section:not([hidden])', (els) => els.map((e) => e.id || e.className || e.getAttribute('aria-labelledby')));
@@ -76,8 +78,10 @@ try {
     const data = randomBytes(size);
     const want = createHash('sha256').update(data).digest('hex');
     await a.setInputFiles('#fileInput', { name: `blob-${size}.bin`, mimeType: 'application/octet-stream', buffer: data });
-    const t0 = Date.now();
     await a.click('#send');
+    await b.waitForSelector('#list [data-act="accept"]', { timeout: 5000 });
+    const t0 = Date.now();
+    await b.click('#list [data-act="accept"]');
     await b.waitForFunction((n) => [...softdrop.engine.all.values()].some((t) => t.name === n && t.status === 'done'), `blob-${size}.bin`, { timeout: 60000 });
     const secs = (Date.now() - t0) / 1000;
     const got = await b.evaluate(async (n) => {
@@ -96,6 +100,8 @@ try {
   const big = randomBytes(40 * 1024 * 1024);
   await a.setInputFiles('#fileInput', { name: 'big.bin', mimeType: 'application/octet-stream', buffer: big });
   await a.click('#send');
+  await b.waitForSelector('#list [data-act="accept"]', { timeout: 5000 });
+  await b.click('#list [data-act="accept"]');
   await a.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'big.bin' && t.done > 0), null, { timeout: 10000 });
   const prog = await a.textContent('.item:has-text("big.bin") [data-speed]');
   check(/^[\d.]+ (KB|MB) \/ 41\.9 MB/.test(prog), `progress shows sizes: "${prog}"`);
@@ -131,10 +137,36 @@ try {
   await a.click('#send');
   await b.waitForFunction(() => [...document.querySelectorAll('.preview')].some((x) => x.textContent === 'after reload'), null, { timeout: 20000 });
   check(true, 'text arrives on the new connection');
+  check(!(await b.$('#list [data-act="accept"]')), 'paired sender: no Accept step');
+
+  step('a dropped connection reconnects and the transfer resumes');
+  const mid = randomBytes(24 * 1024 * 1024);
+  const midHash = createHash('sha256').update(mid).digest('hex');
+  await a.setInputFiles('#fileInput', { name: 'mid.bin', mimeType: 'application/octet-stream', buffer: mid });
+  await a.click('#send');
+  await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'mid.bin' && t.done > 4e6), null, { timeout: 30000 });
+  await a.evaluate((id) => softdrop.peers.links.get(id).lost('test: connection dropped'), idB);
+  await a.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'mid.bin' && t.status === 'paused'), null, { timeout: 5000 });
+  check(true, 'transfer paused when the connection dropped');
+  await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'mid.bin' && t.status === 'done'), null, { timeout: 60000 });
+  const midGot = await b.evaluate(async () => {
+    const t = [...softdrop.engine.all.values()].find((x) => x.name === 'mid.bin');
+    const h = await crypto.subtle.digest('SHA-256', await t.file.arrayBuffer());
+    return Array.from(new Uint8Array(h), (x) => x.toString(16).padStart(2, '0')).join('');
+  });
+  check(midGot === midHash, 'reconnected by itself and finished with the right bytes');
+
+  step('a silent link is dropped when the page comes back');
+  await b.evaluate(() => { const e = softdrop.engine, orig = e.ctl; e.ctl = (l, m) => (m.t === 'pong' ? undefined : orig.call(e, l, m)); });
+  await a.evaluate(() => softdrop.engine.probeLinks());
+  await a.waitForFunction((id) => softdrop.peers.links.get(id).state !== 'open', idB, { timeout: 6000 });
+  check(true, 'no answer to the ping closes the link');
+  await b.evaluate(() => { delete softdrop.engine.ctl; });
+  await a.evaluate((id) => softdrop.peers.get(id).ready(), idB);
 
   step('activity list');
   const ids = await a.$$eval('.list .item', (els) => els.map((e) => e.dataset.id));
-  check(ids.length === new Set(ids).size && ids.length === 6, `sender lists each transfer once (${ids.length} items)`);
+  check(ids.length === new Set(ids).size && ids.length === 7, `sender lists each transfer once (${ids.length} items)`);
 
   step('language');
   const langOf = (p) => p.evaluate(() => ({ html: document.documentElement.lang, send: document.getElementById('send').textContent, nearby: document.getElementById('nearbyTitle').textContent, ph: document.getElementById('text').placeholder, stored: localStorage.getItem('softdrop-lang') }));

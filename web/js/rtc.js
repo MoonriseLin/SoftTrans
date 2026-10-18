@@ -191,7 +191,10 @@ export class PeerLink extends EventTarget {
     dc.onclose = () => {
       if (this.pc === pc) this.lost('channel closed');
     };
-    dc.onmessage = (e) => this.dispatchEvent(new CustomEvent('message', { detail: e.data }));
+    dc.onmessage = (e) => {
+      this.lastRx = performance.now();
+      this.dispatchEvent(new CustomEvent('message', { detail: e.data }));
+    };
     pc.onicecandidate = (e) => {
       if (e.candidate) {
         const ci = candInfo(e.candidate.candidate);

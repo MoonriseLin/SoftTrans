@@ -23,16 +23,24 @@ function tidNew() {
   return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 }
 
+// A link that does not answer a ping this fast after the page comes back is treated as dead.
+const PROBE_MS = 3000;
+
 /**
  * Transfer object shared with the UI:
  * { tid, dir: 'in'|'out', peer, kind: 'file'|'text', name, size, mime, status, done (bytes), speed (B/s), route, error, file?, text? }
  * status: waiting | offered | pending | active | paused | verifying | done | rejected | canceled | failed
  */
 export class TransferEngine extends EventTarget {
-  /** @param {import('./rtc.js').PeerManager} peers */
-  constructor(peers) {
+  /**
+   * @param {import('./rtc.js').PeerManager} peers
+   * @param {(peerId: string) => boolean} trusted incoming transfers from these peers start without asking
+   */
+  constructor(peers, trusted = () => false) {
     super();
     this.peers = peers;
+    this.trusted = trusted;
+    this.reconnects = new Map(); // peer -> { timer, attempt }
     this.all = new Map(); // tid -> transfer
     this.byIdx = new Map(); // `${peer}:${idx}` -> incoming transfer
     this.nextIdx = 1;
@@ -288,6 +296,8 @@ export class TransferEngine extends EventTarget {
       dlog('xfer', 'in meta', { tid: String(m.tid).slice(0, 8), kind: m.kind, size: m.size, mime: m.mime, inline: typeof m.body === 'string', known: this.all.has(m.tid) });
       return this.onMeta(link, m);
     }
+    if (m.t === 'ping') return this.ctl(link, { t: 'pong' });
+    if (m.t === 'pong') return;
     if (m.t !== 'ack') dlog('xfer', 'ctl ' + m.t, { tid: String(m.tid).slice(0, 8), offset: m.offset, reason: m.reason });
     const t = this.all.get(m.tid);
     if (!t || t.peer !== link.peerId) return;
@@ -344,7 +354,7 @@ export class TransferEngine extends EventTarget {
       } else if (existing.status === 'pending') {
         this.byIdx.set(link.peerId + ':' + m.idx, existing);
         existing.idx = m.idx;
-        this.accept(existing);
+        if (this.trusted(link.peerId)) this.accept(existing);
       }
       return;
     }
@@ -360,12 +370,36 @@ export class TransferEngine extends EventTarget {
     this.all.set(t.tid, t);
     this.byIdx.set(link.peerId + ':' + t.idx, t);
     this.emit(t);
-    // Incoming transfers start without asking; "pending" remains only if the link drops first.
-    dlog('xfer', 'in auto-accept', { tid: t.tid.slice(0, 8) });
-    this.accept(t);
+    // Paired devices send without asking; anyone else waits for Accept.
+    if (this.trusted(link.peerId)) {
+      dlog('xfer', 'in auto-accept (paired)', { tid: t.tid.slice(0, 8) });
+      this.accept(t);
+    }
+  }
+
+  /**
+   * While a transfer with this peer is paused, keep trying to reconnect (1.5 s, 3 s, 6 s … up to 30 s).
+   * Without this, a link that died while the peer stayed online (a locked phone) never came back.
+   */
+  keepReconnecting(peer) {
+    const r = this.reconnects.get(peer) || { attempt: 0 };
+    clearTimeout(r.timer);
+    const paused = () => [...this.all.values()].some((t) => t.peer === peer && t.status === 'paused');
+    if (!paused()) { this.reconnects.delete(peer); return; }
+    const delay = Math.min(30000, 1500 * 2 ** r.attempt);
+    r.timer = setTimeout(() => {
+      const link = this.peers.get(peer);
+      if (!paused() || link.state === 'open' || link.state === 'connecting') return;
+      r.attempt++;
+      dlog('xfer', 'reconnecting for paused transfers', { peer: peer.slice(0, 8), attempt: r.attempt });
+      link.ready().catch(() => this.keepReconnecting(peer));
+    }, delay);
+    this.reconnects.set(peer, r);
   }
 
   onLinkOpen(link) {
+    const r = this.reconnects.get(link.peerId);
+    if (r) { clearTimeout(r.timer); this.reconnects.delete(link.peerId); }
     const waiting = [...this.all.values()].filter((t) => t.peer === link.peerId && t.dir === 'out' && (t.status === 'paused' || t.status === 'waiting')).length;
     if (waiting) dlog('xfer', 'link open: re-offering', { peer: link.peerId.slice(0, 8), transfers: waiting });
     for (const t of this.all.values()) {
@@ -378,6 +412,27 @@ export class TransferEngine extends EventTarget {
     for (const t of this.all.values()) {
       if (t.peer !== link.peerId) continue;
       if (t.status === 'active' || t.status === 'offered' || (t.status === 'verifying' && t.dir === 'out')) this.pause(t, 'err.lost');
+    }
+    this.keepReconnecting(link.peerId);
+  }
+
+  /**
+   * After the page was hidden (a locked phone), a link can look open while it is dead.
+   * Ping every open link; one that does not answer within PROBE_MS is dropped at once,
+   * so paused transfers reconnect in seconds instead of after the ~20 s ICE timeout.
+   */
+  probeLinks() {
+    for (const link of this.peers.links.values()) {
+      if (link.state !== 'open' || !link.dc) continue;
+      const dc = link.dc;
+      const sentAt = performance.now();
+      this.ctl(link, { t: 'ping' });
+      setTimeout(() => {
+        if (link.dc === dc && link.state === 'open' && !(link.lastRx > sentAt)) {
+          dlog('xfer', 'no answer to ping after resume: reconnecting', { peer: link.short });
+          link.lost('no answer after resume');
+        }
+      }, PROBE_MS);
     }
   }
 

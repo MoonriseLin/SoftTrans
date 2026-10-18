@@ -100,7 +100,7 @@ async function main() {
   /** last known info for any peer we have seen, so old transfers keep a name */
   const known = new Map(Object.values(me.trusted).map((p) => [p.id, p]));
   const peers = new PeerManager(sig, me, (id) => presence.get(id) || null);
-  const engine = new TransferEngine(peers);
+  const engine = new TransferEngine(peers, (id) => me.isTrusted(id));
 
   let selected = null;
   let files = [];
@@ -607,6 +607,7 @@ async function main() {
     dlog('app', 'page ' + document.visibilityState, { ws: sig.state, busy: engine.busy });
     if (document.visibilityState === 'visible') {
       sig.kick();
+      engine.probeLinks();
       keepAwake();
     }
   });

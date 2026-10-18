@@ -136,6 +136,8 @@ The label can change if ICE restarts. Update the UI when it does.
 
 **No pairing SAS.** Step 4 above is not built. When the server sends `paired`, both pages check that the ID matches the public key, then store the peer as trusted straight away. (A 6-digit SAS existed until October 2026 and was removed at the owner's request.)
 
-**Auto-accept.** The receiver sends `accept` as soon as `meta` arrives; the user is not asked. A transfer stays `pending` (with Accept and Decline buttons) only if the link drops before the accept can go out. Pairing codes are 4 digits (`pair-code`).
+**Auto-accept for paired devices.** For a paired sender the receiver sends `accept` as soon as `meta` arrives. Anyone else gets a `pending` item with Accept and Decline.
+
+**Liveness and reconnect.** Either side may send `{t:'ping'}` on the data channel; the other answers `{t:'pong'}`. When a page becomes visible again, it pings every open link and drops any link that sends nothing back within 3 s (a phone that was locked). While any transfer with a peer is paused, the page keeps reconnecting (1.5 s doubling to 30 s); when the link opens, the sender re-offers and the receiver accepts at its current offset. Pairing codes are 4 digits (`pair-code`).
 
 **Testing switch.** `?relay=1` in the page URL forces `iceTransportPolicy: 'relay'` for that device.
