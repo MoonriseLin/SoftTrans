@@ -106,6 +106,8 @@ try {
   await a.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'big.bin' && t.done > 0), null, { timeout: 10000 });
   const prog = await a.textContent('.item:has-text("big.bin") [data-speed]');
   check(/^[\d.]+ (KB|MB) \/ 41\.9 MB/.test(prog), `progress shows sizes: "${prog}"`);
+  const subLine = await a.textContent('.item:has-text("big.bin") .sub');
+  check(!/MB/.test(subLine), `size not repeated next to the device while sending: "${subLine}"`);
   await a.click('.item:has-text("big.bin") [data-act="cancel"]');
   await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'big.bin' && t.status === 'canceled'), null, { timeout: 5000 });
   check(true, 'receiver sees the cancel');

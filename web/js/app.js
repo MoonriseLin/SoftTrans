@@ -411,7 +411,8 @@ async function main() {
     const who = devLabel(p);
     const titleTxt = t.kind === 'file' ? t.name : tt('item.text');
     let end = '', endCls = 'end', speed = '', note = '';
-    let line = esc(tt(t.dir === 'in' ? 'item.from' : 'item.to', { who, size: fmtB(t.size) }));
+    // While a transfer runs, its progress line already shows "done / total", so the size is left out here.
+    let line = esc(tt(t.dir === 'in' ? 'item.from' : 'item.to', { who }) + (t.status === 'active' ? '' : ' · ' + fmtB(t.size)));
     switch (t.status) {
       case 'pending':
         endCls += ' buttons';
