@@ -125,6 +125,23 @@ try {
   await b.waitForFunction(() => /did not work/.test(document.getElementById('pairMsg').textContent));
   check(true, 'code is single use');
 
+  step('pairing by scanning the QR code');
+  await a.click('#codeBtn');
+  await a.waitForFunction(() => !document.getElementById('pairQr').hidden && document.getElementById('pairQr').dataset.code);
+  const qrCode = await a.$eval('#pairQr', (e) => e.dataset.code);
+  check(/^\d{4}$/.test(qrCode) && (await a.isVisible('#qrImg svg path')), `QR shown for code ${qrCode}`);
+  const cctx = await browser.newContext();
+  const c = await cctx.newPage();
+  await c.goto(BASE + '/#pair=' + qrCode);
+  await c.waitForFunction(() => window.softdrop && softdrop.sig.state === 'open');
+  const idC = await c.evaluate(() => softdrop.me.id);
+  await a.waitForFunction((id) => softdrop.me.isTrusted(id), idC, { timeout: 10000 });
+  await c.waitForFunction((id) => softdrop.me.isTrusted(id), idA, { timeout: 10000 });
+  check(true, 'opening the QR link pairs both devices');
+  check(!(await c.evaluate(() => location.hash)), 'code removed from the address');
+  check(await a.isHidden('#pairQr'), 'QR hidden once used');
+  await cctx.close();
+
   step('reload keeps identity and trust');
   await b.reload();
   await b.waitForFunction(() => window.softdrop && softdrop.sig.state === 'open');

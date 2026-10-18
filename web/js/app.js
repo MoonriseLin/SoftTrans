@@ -3,6 +3,7 @@ import { Signaling } from './signaling.js';
 import { PeerManager } from './rtc.js';
 import { TransferEngine, isLive } from './transfer.js';
 import { cleanupStorage, opfsSupported } from './sinks.js';
+import qrcode from './vendor/qrcode.js';
 import { dlog, debugOn, onLine, allLines, clearLines, sendRemote } from './log.js';
 import { t, tr, LANGS, getLang, setLang, onLangChange, applyStatic } from './i18n.js';
 
@@ -668,6 +669,7 @@ async function main() {
     if (!left) {
       codeState = null;
       clearInterval(codeTimer);
+      $('pairQr').hidden = true;
       $('pairSub').textContent = t('pair.sub');
       $('codeBtn').textContent = t('pair.getCode');
       return;
@@ -678,6 +680,22 @@ async function main() {
     $('pairSub').innerHTML = esc(t('pair.yourCode', { code: '\u0000', time: `${mm}:${ss}` }))
       .replace('\u0000', `<span class="code">${c}</span>`);
     $('codeBtn').textContent = t('pair.newCode');
+    if ($('pairQr').dataset.code !== c) {
+      $('qrImg').innerHTML = qrSvg(`${location.origin}${location.pathname}#pair=${c}`);
+      $('pairQr').dataset.code = c;
+    }
+    $('pairQr').hidden = false;
+  }
+  /** QR code as an SVG made of one path (attributes only: the CSP forbids inline styles). */
+  function qrSvg(text) {
+    const q = qrcode(0, 'M');
+    q.addData(text);
+    q.make();
+    const n = q.getModuleCount(), m = 3;
+    let d = '';
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) d += `M${x + m} ${y + m}h1v1h-1z`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n + 2 * m} ${n + 2 * m}" shape-rendering="crispEdges" role="img" aria-label="${esc(t('pair.qrAria'))}">` +
+      `<rect width="100%" height="100%" fill="#FFFDFB"/><path d="${d}" fill="#3B2F2A"/></svg>`;
   }
   function resetCode() {
     codeState = null;
@@ -709,6 +727,20 @@ async function main() {
     setPairMsg('pair.pairing');
     sig.send({ t: 'pair-join', code: digits });
   });
+  // Opened from a scanned QR code (#pair=1234): join with that code as soon as the server is reachable.
+  const scanned = (location.hash.match(/^#pair=(\d{4})$/) || [])[1];
+  if (scanned) {
+    history.replaceState(null, '', location.pathname + location.search);
+    const join = () => {
+      if (sig.state !== 'open') return;
+      sig.removeEventListener('state', join);
+      dlog('app', 'pairing from scanned QR');
+      setPairMsg('pair.pairing');
+      sig.send({ t: 'pair-join', code: scanned });
+    };
+    sig.addEventListener('state', join);
+    join();
+  }
   sig.addEventListener('error', (e) => {
     const { code, msg } = e.detail;
     if (['bad-code', 'own-code', 'rate-limited'].includes(code)) setPairMsg('err.' + code);

@@ -113,6 +113,10 @@
         <button type="submit" class="btn primary" id="pairBtn" disabled data-i18n="pair.btn">Pair</button>
       </form>
     </div>
+    <div class="qr" id="pairQr" hidden>
+      <div class="qr-img" id="qrImg"></div>
+      <p class="qr-note" data-i18n="pair.scan">Or scan this with the other device's camera: it opens Softdrop there and pairs in one step.</p>
+    </div>
     <p class="pairmsg" id="pairMsg" role="status" aria-live="polite"></p>
     <ul class="paired" id="pairedList" data-i18n-attr="aria-label:pair.listAria" aria-label="Paired devices"></ul>
   </section>

@@ -24,7 +24,7 @@ Nothing to install. On iPhone or Android you can add the page to your Home Scree
 **Devices on different networks** (for example a phone on mobile data and a laptop at home) pair once:
 
 1. On one device, tap **Get a code**. A 4-digit code appears, valid for 5 minutes.
-2. Type the code on the other device and tap **Pair**. The two devices are paired right away.
+2. Type the code on the other device and tap **Pair**, or scan the QR code shown next to it with the other device's camera (this also opens the page there). The two devices are paired right away.
 
 From then on, the two devices find each other whenever both are online, on any network.
 

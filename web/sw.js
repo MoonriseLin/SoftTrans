@@ -2,10 +2,10 @@
 // deploy shows up on the next load; the cache is the fallback when offline.
 // Transfers never pass through here: they use WebRTC, not fetch.
 
-const CACHE = 'softdrop-v10';
+const CACHE = 'softdrop-v11';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
-  'js/app.js', 'js/i18n.js', 'js/log.js', 'js/identity.js', 'js/signaling.js', 'js/rtc.js', 'js/transfer.js', 'js/sinks.js', 'js/sha256.js',
+  'js/app.js', 'js/i18n.js', 'js/log.js', 'js/identity.js', 'js/signaling.js', 'js/rtc.js', 'js/transfer.js', 'js/sinks.js', 'js/sha256.js', 'js/vendor/qrcode.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
 ];
 
