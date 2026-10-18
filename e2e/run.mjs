@@ -139,6 +139,22 @@ try {
   check(true, 'text arrives on the new connection');
   check(!(await b.$('#list [data-act="accept"]')), 'paired sender: no Accept step');
 
+  step('save all');
+  await a.setInputFiles('#fileInput', [
+    { name: 'one.txt', mimeType: 'text/plain', buffer: Buffer.from('first file') },
+    { name: 'two.txt', mimeType: 'text/plain', buffer: Buffer.from('second file') },
+  ]);
+  await a.click('#send');
+  await b.waitForFunction(() => ['one.txt', 'two.txt'].every((n) => [...softdrop.engine.all.values()].some((t) => t.name === n && t.status === 'done')), null, { timeout: 10000 });
+  await b.waitForSelector('#saveAll:not([hidden])');
+  check((await b.textContent('#saveAll')) === 'Save all (2)', 'Save all (2) appears');
+  const dls = [];
+  b.on('download', (d) => dls.push(d.suggestedFilename()));
+  await b.click('#saveAll');
+  await b.waitForFunction(() => document.getElementById('saveAll').hidden, null, { timeout: 5000 });
+  await new Promise((r) => setTimeout(r, 500));
+  check(dls.sort().join(',') === 'one.txt,two.txt', `Save all downloads both (${dls.join(',')})`);
+
   step('a dropped connection reconnects and the transfer resumes');
   const mid = randomBytes(24 * 1024 * 1024);
   const midHash = createHash('sha256').update(mid).digest('hex');
@@ -166,7 +182,7 @@ try {
 
   step('activity list');
   const ids = await a.$$eval('.list .item', (els) => els.map((e) => e.dataset.id));
-  check(ids.length === new Set(ids).size && ids.length === 7, `sender lists each transfer once (${ids.length} items)`);
+  check(ids.length === new Set(ids).size && ids.length === 9, `sender lists each transfer once (${ids.length} items)`);
 
   step('language');
   const langOf = (p) => p.evaluate(() => ({ html: document.documentElement.lang, send: document.getElementById('send').textContent, nearby: document.getElementById('nearbyTitle').textContent, ph: document.getElementById('text').placeholder, stored: localStorage.getItem('softdrop-lang') }));

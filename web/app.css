@@ -223,6 +223,7 @@ textarea::placeholder { color: var(--muted); }
 @keyframes flash { 0%, 60% { box-shadow: 0 0 0 3px var(--accent), var(--shadow); } 100% { box-shadow: var(--shadow); } }
 
 /* Activity */
+.act-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 36px; }
 .list { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .item {
   display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center;

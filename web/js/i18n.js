@@ -91,6 +91,7 @@ const en = {
 
 
   'act.title': 'Activity',
+  'saveAll': 'Save all ({n})',
   'latest.from': 'Latest from {who}',
   'latest.aria': 'Latest received',
   'list.empty': 'Nothing yet. Pick a device and send something.',
@@ -227,6 +228,7 @@ const zh = {
 
 
   'act.title': '动态',
+  'saveAll': '全部保存（{n}）',
   'latest.from': '来自 {who} 的最新内容',
   'latest.aria': '最新收到',
   'list.empty': '还没有内容。选择一台设备，发点什么吧。',
@@ -363,6 +365,7 @@ const zhHant = {
 
 
   'act.title': '動態',
+  'saveAll': '全部儲存（{n}）',
   'latest.from': '來自 {who} 的最新內容',
   'latest.aria': '最新收到',
   'list.empty': '還沒有內容。選擇一台裝置，傳點什麼吧。',
@@ -499,6 +502,7 @@ const ja = {
 
 
   'act.title': 'アクティビティ',
+  'saveAll': 'すべて保存（{n}）',
   'latest.from': '{who} から届いた最新',
   'latest.aria': '最新の受信',
   'list.empty': 'まだ何もありません。デバイスを選んで送ってみましょう。',

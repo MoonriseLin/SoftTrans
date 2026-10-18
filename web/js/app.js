@@ -480,7 +480,45 @@ async function main() {
       return itemHTML(t, isNew);
     }).join('');
     updateTitle();
+    renderSaveAll();
   }
+
+  /* ---------- Save all: every received file not saved yet ---------- */
+  const saveAllBtn = $('saveAll');
+  const unsaved = () => order.map((tid) => engine.all.get(tid)).filter((t) => t && t.dir === 'in' && t.kind === 'file' && t.status === 'done' && !t.saved);
+  function renderSaveAll() {
+    const n = unsaved().length;
+    saveAllBtn.hidden = n < 2;
+    saveAllBtn.textContent = tt('saveAll', { n });
+  }
+  function download(t) {
+    const a = document.createElement('a');
+    a.href = urlFor(t);
+    a.download = t.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    t.saved = true;
+  }
+  saveAllBtn.addEventListener('click', async () => {
+    const items = unsaved().reverse(); // oldest first
+    dlog('app', 'save all', { files: items.length });
+    const files = items.map((t) => t.file);
+    // Phones: one share sheet for all files ("Save to Files" / "Save images").
+    if (canShare(files)) {
+      try {
+        await navigator.share({ files });
+        items.forEach((t) => { t.saved = true; });
+      } catch {}
+    } else {
+      // Desktop: one download each, spaced out so the browser does not drop any.
+      for (const t of items) {
+        download(t);
+        await new Promise((r) => setTimeout(r, 350));
+      }
+    }
+    renderSaveAll();
+  });
 
   function patchProgress(t) {
     const li = list.querySelector(`[data-id="${t.tid}"]`);
@@ -541,7 +579,8 @@ async function main() {
     return t.url;
   }
   function canShare(file) {
-    try { return !!(file && navigator.canShare && navigator.canShare({ files: [file] }) && /iPhone|iPad|Android/.test(navigator.userAgent)); } catch { return false; }
+    const files = Array.isArray(file) ? file : [file];
+    try { return !!(files.length && files.every(Boolean) && navigator.canShare && navigator.canShare({ files }) && /iPhone|iPad|Android/.test(navigator.userAgent)); } catch { return false; }
   }
 
   // Tapping the bar itself (not its button) jumps to that item in Activity.
@@ -566,14 +605,10 @@ async function main() {
     else if (act === 'decline') engine.reject(t);
     else if (act === 'cancel') engine.cancel(t);
     else if (act === 'save') {
-      const a = document.createElement('a');
-      a.href = urlFor(t);
-      a.download = t.name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      download(t);
+      renderSaveAll();
     } else if (act === 'share') {
-      try { await navigator.share({ files: [t.file] }); } catch {}
+      try { await navigator.share({ files: [t.file] }); t.saved = true; renderSaveAll(); } catch {}
     } else if (act === 'copy') {
       const label = (s) => { b.textContent = tt(s); setTimeout(() => { b.textContent = tt('copy'); }, 1800); };
       try { await navigator.clipboard.writeText(t.text); label('copied'); } catch { label('copyFail'); }
