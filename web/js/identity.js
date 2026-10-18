@@ -149,10 +149,3 @@ export class Identity {
   }
 }
 
-/** Short authentication string both users compare after pairing: 6 digits. */
-export async function sasFor(pubA, pubB) {
-  const [x, y] = [pubA, pubB].sort();
-  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode('softdrop/sas\n' + x + '\n' + y)));
-  const n = ((h[0] << 24) | (h[1] << 16) | (h[2] << 8) | h[3]) >>> 0;
-  return String(n % 1_000_000).padStart(6, '0');
-}

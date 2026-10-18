@@ -1,4 +1,4 @@
-import { Identity, idForPub, iconForKind, sasFor } from './identity.js';
+import { Identity, idForPub, iconForKind } from './identity.js';
 import { Signaling } from './signaling.js';
 import { PeerManager } from './rtc.js';
 import { TransferEngine, isLive } from './transfer.js';
@@ -583,44 +583,23 @@ async function main() {
     if (['bad-code', 'own-code', 'rate-limited'].includes(code)) setPairMsg('err.' + code);
   });
 
-  const dialog = $('sasDialog');
-  let sasPeer = '';
-  const pairQueue = [];
+  // A working code is enough: the other device is trusted straight away, without a check number.
   sig.addEventListener('paired', async (e) => {
     const p = e.detail.peer;
     if ((await idForPub(p.pub)) !== p.id) { setPairMsg('pair.badSecurity'); return; }
-    pairQueue.push(p);
-    if (!dialog.open) nextPair();
-  });
-  async function nextPair() {
-    const p = pairQueue.shift();
-    if (!p) return;
     clearInterval(codeTimer);
     resetCode();
     sig.send({ t: 'pair-cancel' });
     pairInput.value = '';
     pairBtn.disabled = true;
-    const sas = await sasFor(me.pub, p.pub);
-    sasPeer = p.name + ' · ' + p.kind;
-    $('sasTitle').textContent = t('sas.title', { name: sasPeer });
-    $('sasCode').textContent = sas.slice(0, 3) + ' ' + sas.slice(3);
-    dialog.returnValue = '';
-    dialog.onclose = async () => {
-      dlog('app', 'pair dialog answered', { peer: p.id.slice(0, 8), answer: dialog.returnValue || 'dismissed' });
-      if (dialog.returnValue === 'yes') {
-        await me.trust(p);
-        known.set(p.id, { ...p, icon: iconForKind(p.kind) });
-        sig.send({ t: 'links', ids: Object.keys(me.trusted) });
-        setPairMsg('pair.done', { name: p.name });
-      } else {
-        setPairMsg('pair.no');
-      }
-      renderPaired();
-      renderRadar();
-      nextPair();
-    };
-    dialog.showModal();
-  }
+    await me.trust(p);
+    known.set(p.id, { ...p, icon: iconForKind(p.kind) });
+    sig.send({ t: 'links', ids: Object.keys(me.trusted) });
+    dlog('app', 'paired', { peer: p.id.slice(0, 8) });
+    setPairMsg('pair.done', { name: p.name });
+    renderPaired();
+    renderRadar();
+  });
 
   function renderPaired() {
     const items = Object.values(me.trusted);
@@ -689,7 +668,6 @@ async function main() {
     renderList();
     renderPairSub();
     if (pairMsgState) pairMsg.textContent = t(pairMsgState.key, pairMsgState.vars);
-    if (sasPeer) $('sasTitle').textContent = t('sas.title', { name: sasPeer });
   });
   setupDebugPanel(sig);
   sig.start();

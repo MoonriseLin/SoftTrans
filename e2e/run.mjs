@@ -90,21 +90,16 @@ try {
   await b.waitForFunction(() => [...softdrop.engine.all.values()].some((t) => t.name === 'big.bin' && t.status === 'canceled'), null, { timeout: 5000 });
   check(true, 'receiver sees the cancel');
 
-  step('pairing with SAS');
+  step('pairing by code');
   await a.click('#codeBtn');
   await a.waitForSelector('#pairSub .code');
   const code = (await a.textContent('#pairSub .code')).replace(/\D/g, '');
+  check(/^\d{4}$/.test(code), `4-digit code ${code}`);
   await b.fill('#pairInput', code);
   await b.click('#pairBtn');
-  await a.waitForSelector('#sasDialog[open]');
-  await b.waitForSelector('#sasDialog[open]');
-  const sasA = await a.textContent('#sasCode');
-  const sasB = await b.textContent('#sasCode');
-  check(sasA === sasB && /^\d{3} \d{3}$/.test(sasA), `both show the same SAS ${sasA}`);
-  await a.click('#sasDialog button[value="yes"]');
-  await b.click('#sasDialog button[value="yes"]');
   await a.waitForFunction((id) => softdrop.me.isTrusted(id), idB);
   await b.waitForFunction((id) => softdrop.me.isTrusted(id), idA);
+  check(true, 'paired on both sides without a confirm step');
   check(await a.isVisible(`.device[data-id="${idB}"] .badge`), 'paired badge on the radar');
   await b.fill('#pairInput', code);
   await b.click('#pairBtn');

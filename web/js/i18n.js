@@ -79,7 +79,6 @@ const en = {
   'pair.pairing': 'Pairing…',
   'pair.badSecurity': 'Pairing failed a security check.',
   'pair.done': 'Paired with {name}. It will show up here whenever both of you are online.',
-  'pair.no': 'Not paired. If the numbers differed, someone may be in between. Try again with a new code.',
   'pair.forgot': 'Forgot {name}.',
   'pair.forget': 'Forget {name}',
   'pair.forgetTitle': 'Forget',
@@ -87,10 +86,6 @@ const en = {
   'err.own-code': 'That is your own code. Enter the code shown on the other device.',
   'err.rate-limited': 'Too many tries. Wait a few minutes.',
 
-  'sas.title': 'Pair with {name}?',
-  'sas.sub': 'Check that both screens show the same number. This proves no one is in between.',
-  'sas.no': 'They differ',
-  'sas.yes': 'They match',
 
   'act.title': 'Activity',
   'list.empty': 'Nothing yet. Pick a device and send something.',
@@ -215,7 +210,6 @@ const zh = {
   'pair.pairing': '正在配对…',
   'pair.badSecurity': '配对未通过安全检查。',
   'pair.done': '已与 {name} 配对。只要双方都在线，它就会出现在这里。',
-  'pair.no': '没有配对。如果两边数字不同，可能有人在中间拦截。请换一个配对码再试。',
   'pair.forgot': '已移除 {name}。',
   'pair.forget': '移除 {name}',
   'pair.forgetTitle': '移除',
@@ -223,10 +217,6 @@ const zh = {
   'err.own-code': '这是你自己的配对码。请输入另一台设备上显示的配对码。',
   'err.rate-limited': '尝试次数太多，请过几分钟再试。',
 
-  'sas.title': '与 {name} 配对？',
-  'sas.sub': '请确认两边屏幕上的数字相同，这样可以确保中间没有别人。',
-  'sas.no': '不一样',
-  'sas.yes': '一样',
 
   'act.title': '动态',
   'list.empty': '还没有内容。选择一台设备，发点什么吧。',
@@ -351,7 +341,6 @@ const zhHant = {
   'pair.pairing': '正在配對…',
   'pair.badSecurity': '配對未通過安全檢查。',
   'pair.done': '已與 {name} 配對。只要雙方都在線上，它就會出現在這裡。',
-  'pair.no': '沒有配對。如果兩邊數字不同，可能有人在中間攔截。請換一組配對碼再試。',
   'pair.forgot': '已移除 {name}。',
   'pair.forget': '移除 {name}',
   'pair.forgetTitle': '移除',
@@ -359,10 +348,6 @@ const zhHant = {
   'err.own-code': '這是你自己的配對碼。請輸入另一台裝置上顯示的配對碼。',
   'err.rate-limited': '嘗試次數太多，請過幾分鐘再試。',
 
-  'sas.title': '與 {name} 配對？',
-  'sas.sub': '請確認兩邊螢幕上的數字相同，這樣可以確保中間沒有別人。',
-  'sas.no': '不一樣',
-  'sas.yes': '一樣',
 
   'act.title': '動態',
   'list.empty': '還沒有內容。選擇一台裝置，傳點什麼吧。',
@@ -487,7 +472,6 @@ const ja = {
   'pair.pairing': 'ペアリング中…',
   'pair.badSecurity': 'ペアリングが安全確認に失敗しました。',
   'pair.done': '{name} とペアリングしました。お互いがオンラインのとき、ここに表示されます。',
-  'pair.no': 'ペアリングしませんでした。数字が違った場合、間に誰かがいるかもしれません。新しいコードでやり直してください。',
   'pair.forgot': '{name} を削除しました。',
   'pair.forget': '{name} を削除',
   'pair.forgetTitle': '削除',
@@ -495,10 +479,6 @@ const ja = {
   'err.own-code': 'これはあなた自身のコードです。相手のデバイスに表示されたコードを入力してください。',
   'err.rate-limited': '試行回数が多すぎます。数分待ってからお試しください。',
 
-  'sas.title': '{name} とペアリングしますか？',
-  'sas.sub': '両方の画面に同じ数字が出ているか確認してください。間に誰もいないことの確認になります。',
-  'sas.no': '違う',
-  'sas.yes': '同じ',
 
   'act.title': 'アクティビティ',
   'list.empty': 'まだ何もありません。デバイスを選んで送ってみましょう。',

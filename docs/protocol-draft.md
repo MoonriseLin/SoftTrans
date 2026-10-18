@@ -134,8 +134,8 @@ The label can change if ICE restarts. Update the UI when it does.
 
 **Route label.** `lan` = local host with remote host, or a peer-reflexive private address. `direct` = any other non-relay path. `relay` = either side relay. Labels: "Direct · same Wi-Fi", "Direct", "Via relay". The label is re-read every 4 s while the link is open.
 
-**Pairing SAS.** 6 digits: the first 4 bytes of SHA-256(`softdrop/sas\n` + the two public keys sorted and joined by `\n`), mod 10^6. A peer is stored as trusted only after the user taps "They match".
+**No pairing SAS.** Step 4 above is not built. When the server sends `paired`, both pages check that the ID matches the public key, then store the peer as trusted straight away. (A 6-digit SAS existed until October 2026 and was removed at the owner's request.)
 
-**Auto-accept.** The receiver sends `accept` as soon as `meta` arrives; the user is not asked. A transfer stays `pending` (with Accept and Decline buttons) only if the link drops before the accept can go out. Pairing codes are 4 digits (`pair-code`); the SAS stays 6 digits.
+**Auto-accept.** The receiver sends `accept` as soon as `meta` arrives; the user is not asked. A transfer stays `pending` (with Accept and Decline buttons) only if the link drops before the accept can go out. Pairing codes are 4 digits (`pair-code`).
 
 **Testing switch.** `?relay=1` in the page URL forces `iceTransportPolicy: 'relay'` for that device.

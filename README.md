@@ -24,8 +24,7 @@ Nothing to install. On iPhone or Android you can add the page to your Home Scree
 **Devices on different networks** (for example a phone on mobile data and a laptop at home) pair once:
 
 1. On one device, tap **Get a code**. A 4-digit code appears, valid for 5 minutes.
-2. Type the code on the other device and tap **Pair**.
-3. Both screens show the same 6-digit check number. If they match, tap **They match**.
+2. Type the code on the other device and tap **Pair**. The two devices are paired right away.
 
 From then on, the two devices find each other whenever both are online, on any network.
 
@@ -68,7 +67,7 @@ Browsers can't connect to each other without first exchanging connection details
 - Every message is **signed** with the sender's device key, and the receiver checks the signature before using it.
 - The offer and answer include the fingerprint of the certificate that will encrypt the connection (DTLS). The fingerprint is covered by the signature, so it is pinned. After connecting, each side checks that the certificate actually used matches it.
 
-As a result, neither a malicious server nor someone else on the Wi-Fi can slip into the middle and pose as one of your devices. For devices you have not paired, you are trusting the server to introduce the right device. Pairing removes that trust: both sides compare a short check number derived from both public keys.
+As a result, neither a malicious server nor someone else on the Wi-Fi can slip into the middle and pose as one of your devices. For devices you have not paired, you are trusting the server to introduce the right device. Pairing stores the other device's public key, so later connections are checked against that key. Pairing itself trusts the server and the 4-digit code: there is no extra check number to compare.
 
 ### 4. Choosing the path
 
@@ -124,7 +123,7 @@ server/      signaling server (Node 20 + ws): presence, IP grouping, pairing cod
              signed signaling relay, TURN credentials
 web/         the app, no build step: index.html, app.css, js/*.js, service worker,
              manifest, icons
-  js/identity.js   device keys, trusted peers, pairing check number
+  js/identity.js   device keys, trusted peers
   js/signaling.js  WebSocket client
   js/rtc.js        WebRTC links, signature checks, DTLS pinning, route detection
   js/transfer.js   transfer protocol (meta/accept/chunks/hash/cancel/resume)
