@@ -46,6 +46,7 @@ try {
   await a.waitForSelector(`.device[data-id="${idB}"][aria-pressed="true"]`, { timeout: 5000 });
   check(true, 'the only nearby device is selected without a tap');
   await a.waitForFunction((id) => softdrop.peers.links.get(id)?.state === 'open', idB, { timeout: 15000 });
+  await a.waitForFunction((id) => softdrop.peers.links.get(id).route, idB, { timeout: 5000 });
   const route = await a.evaluate((id) => softdrop.peers.links.get(id).route, idB);
   check(route === (process.env.WANT_ROUTE || 'lan'), `route detected as ${route}`);
   const toText = await a.textContent('#to');

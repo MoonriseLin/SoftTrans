@@ -80,6 +80,11 @@ export async function readRoute(pc, ctx = {}) {
     if (hairpin && rttMs != null && rttMs <= HAIRPIN_LAN_RTT_MS) route = 'lan';
   }
 
+  // Too early to tell: the peer answered from an address it has not announced yet (often its
+  // IPv6 host candidate, signaled a few ms after the IPv4 one). Calling it "direct" here flips
+  // to "same Wi-Fi" a moment later, so the caller waits (up to 3 s) for the candidate to arrive.
+  const unsure = route === 'direct' && rt === 'prflx' && !rtHost;
+
   let remoteFp = null;
   if (transport && transport.remoteCertificateId) {
     const cert = stats.get(transport.remoteCertificateId);
@@ -105,7 +110,7 @@ export async function readRoute(pc, ctx = {}) {
     alive.push(`${l.candidateType}/${m.candidateType}${r.currentRoundTripTime != null ? ':' + Math.round(r.currentRoundTripTime * 1000) + 'ms' : ''}${r === pair ? '*' : ''}`);
   });
   return {
-    route, hairpin, alive: alive.join(' ') || 'none',
+    route, unsure, hairpin, alive: alive.join(' ') || 'none',
     tried: Object.entries(tried).map(([k, n]) => (n > 1 ? `${k}x${n}` : k)).join(' '),
     remoteHosts: remoteHosts.join(',') || 'none', local: lt, remote: rt === 'prflx' && rtHost ? 'prflx=host' : rt, protocol: local.protocol, remoteFp,
     localAddr: laddr && `${laddr}:${local.port}`, remoteAddr: raddr && `${raddr}:${remote.port}`,
@@ -276,6 +281,8 @@ export class PeerLink extends EventTarget {
       if (ci.type === 'srflx' && ci.addr) this.remotePublic.add(ipOf(ci.addr));
       dlog('rtc', 'remote candidate', { peer: this.short, ...ci, queued: !this.pc.remoteDescription });
       if (!this.pc.remoteDescription) this.pendingIce.push(d.c);
+      // The route label waits for exactly this when it was unsure: place it as soon as the candidate is in.
+      if (ci.type === 'host' && this.unsureRecheck) setTimeout(this.unsureRecheck, 100);
       else await this.pc.addIceCandidate(d.c).catch((e) => dlog('rtc', 'addIceCandidate failed', { peer: this.short, err: e.message }));
     }
   }
@@ -300,6 +307,7 @@ export class PeerLink extends EventTarget {
       local: info.localAddr, remote: info.remoteAddr, rtt: info.rtt != null ? info.rtt + 'ms' : undefined,
       maxMsg: pc.sctp && pc.sctp.maxMessageSize, alivePairs: info.alive,
       triedPairs: info.route === 'lan' ? undefined : info.tried, remoteHosts: info.route === 'lan' ? undefined : info.remoteHosts,
+      unsure: info.unsure || undefined,
       dtls: !info.remoteFp ? 'fingerprint not in stats (skipped)' : this.pinned.has(info.remoteFp) ? 'pinned fingerprint matches' : 'MISMATCH',
     });
     if (info.remoteFp && this.pinned.size && !this.pinned.has(info.remoteFp)) {
@@ -309,13 +317,16 @@ export class PeerLink extends EventTarget {
     clearTimeout(this.connectTimer);
     this.restarts = 0;
     this.farHairpin = !!(info.hairpin && info.route !== 'lan');
-    this.setRoute(info.route);
+    // While the route is unsure, show no label rather than a wrong one, for up to 3 s.
+    const unsureUntil = performance.now() + 3000;
+    if (!info.unsure) this.setRoute(info.route);
     this.setState('open');
     clearInterval(this.routeTimer);
     const recheck = async () => {
       if (this.pc !== pc || this.state !== 'open') return;
       const r = await readRoute(pc, this).catch(() => null);
-      if (r && r.route) {
+      if (r && r.route && !(r.unsure && performance.now() < unsureUntil)) {
+        if (!r.unsure) this.unsureRecheck = null;
         if (r.route !== this.route || `${r.localAddr}>${r.remoteAddr}` !== this.lastPair) {
           dlog('rtc', 'selected pair changed', { peer: this.short, route: r.route + (r.hairpin ? (r.route === 'lan' ? ' (hairpin via home router)' : ' (hairpin via a far NAT: VPN or proxy exit?)') : ''), pair: `${r.local}/${r.remote}`, local: r.localAddr, remote: r.remoteAddr, rtt: r.rtt, alivePairs: r.alive });
         }
@@ -329,6 +340,8 @@ export class PeerLink extends EventTarget {
       }
     };
     // Candidates often finish arriving just after the channel opens: look again soon.
+    this.unsureRecheck = info.unsure ? recheck : null;
+    if (info.unsure) setTimeout(recheck, 3050); // give up waiting: label with what we have
     setTimeout(recheck, 1200);
     this.routeTimer = setInterval(recheck, 4000);
   }
@@ -394,6 +407,7 @@ export class PeerLink extends EventTarget {
   }
 
   teardown() {
+    this.unsureRecheck = null;
     clearTimeout(this.connectTimer);
     clearTimeout(this.discTimer);
     clearInterval(this.routeTimer);
