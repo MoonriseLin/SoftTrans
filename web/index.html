@@ -81,7 +81,10 @@
         <div class="staged" id="staged"></div>
       </div>
       <div class="actions">
-        <button type="button" class="btn ghost" id="pick" data-i18n="pick">Choose files</button>
+        <div class="actions-l">
+          <button type="button" class="btn ghost" id="pick" data-i18n="pick">Choose files</button>
+          <button type="button" class="btn ghost" id="pasteBtn" data-i18n="paste" hidden>Paste</button>
+        </div>
         <button type="button" class="btn primary" id="send" disabled>Send</button>
         <input type="file" id="fileInput" multiple hidden>
       </div>

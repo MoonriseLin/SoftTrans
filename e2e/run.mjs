@@ -19,7 +19,7 @@ if (!process.env.BASE) {
 const browser = await chromium.launch({ args: ['--disable-features=WebRtcHideLocalIpsWithMdns', ...(process.env.ARGS ? process.env.ARGS.split(' ') : [])] });
 const errors = [];
 async function open(label) {
-  const ctx = await browser.newContext({ acceptDownloads: true });
+  const ctx = await browser.newContext({ acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
   const page = await ctx.newPage();
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${label}] ${m.text()} @ ${m.location().url}`); });
   page.on('requestfailed', (r) => errors.push(`[${label}] requestfailed ${r.url()} ${r.failure()?.errorText}`));
@@ -57,6 +57,15 @@ try {
   check(true, 'sender shows Sent');
   check(!(await b.$('[data-act="accept"]')), 'receiver accepted without asking');
   check(await b.isHidden('#debugPanel'), 'log panel hidden without ?debug=1');
+
+  step('paste button');
+  await a.evaluate(() => navigator.clipboard.writeText('from the clipboard'));
+  await a.fill('#text', '');
+  await a.click('#pasteBtn');
+  await a.waitForFunction(() => document.getElementById('text').value !== '', null, { timeout: 3000 }).catch(() => {});
+  const pasted = await a.inputValue('#text');
+  check(pasted === 'from the clipboard', `Paste puts clipboard text in the box ("${pasted}")`);
+  await a.fill('#text', '');
 
   for (const size of [0, 70000, 12 * 1024 * 1024 + 7]) {
     step(`file transfer, ${size} bytes`);

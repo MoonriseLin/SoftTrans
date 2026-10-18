@@ -191,6 +191,7 @@ textarea::placeholder { color: var(--muted); }
 .chip-x:hover { background: var(--surface-2); color: var(--fg); }
 .actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .zone + .actions { margin-top: 14px; }
+.actions-l { display: flex; flex-wrap: wrap; gap: 10px; }
 
 /* Pairing */
 .pair { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px; padding: 16px 18px; border-radius: 26px; background: var(--surface-2); }

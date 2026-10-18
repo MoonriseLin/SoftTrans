@@ -324,6 +324,45 @@ async function main() {
   // Dropping a file anywhere else on the page should not navigate away from it.
   window.addEventListener('dragover', (e) => e.preventDefault());
   window.addEventListener('drop', (e) => e.preventDefault());
+  // Paste button: reads the clipboard directly, so no long-press or keyboard shortcut is needed.
+  // Images and files are staged; text goes into the text box at the cursor.
+  const pasteBtn = $('pasteBtn');
+  pasteBtn.hidden = !(navigator.clipboard && (navigator.clipboard.read || navigator.clipboard.readText));
+  const flashPaste = (key) => {
+    pasteBtn.textContent = t(key);
+    setTimeout(() => { pasteBtn.textContent = t('paste'); }, 1800);
+  };
+  pasteBtn.addEventListener('click', async () => {
+    const got = { files: [], text: '' };
+    try {
+      if (navigator.clipboard.read) {
+        for (const item of await navigator.clipboard.read()) {
+          const type = item.types.find((x) => !x.startsWith('text/'));
+          if (type) {
+            const blob = await item.getType(type);
+            const ext = (type.split('/')[1] || 'bin').replace(/[^\w]/g, '').slice(0, 8) || 'bin';
+            got.files.push(new File([blob], `pasted-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${ext}`, { type }));
+          } else if (item.types.includes('text/plain')) {
+            got.text += await (await item.getType('text/plain')).text();
+          }
+        }
+      } else {
+        got.text = await navigator.clipboard.readText();
+      }
+    } catch (err) {
+      dlog('app', 'paste failed', { err: err && err.name });
+      flashPaste('pasteFail');
+      return;
+    }
+    dlog('app', 'paste', { files: got.files.length, textChars: got.text.length });
+    if (!got.files.length && !got.text) { flashPaste('pasteEmpty'); return; }
+    if (got.files.length) addFiles(got.files);
+    if (got.text) {
+      ta.setRangeText(got.text, ta.selectionStart, ta.selectionEnd, 'end');
+      ta.focus();
+      updateSend();
+    }
+  });
   // Pasting a file anywhere on the page stages it.
   document.addEventListener('paste', (e) => {
     if (e.target === ta) return;
