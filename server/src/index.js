@@ -157,9 +157,10 @@ server.on('upgrade', (req, socket, head) => {
       ip,
       groupKey(ip),
     );
-    ws.isAlive = true;
-    ws.on('pong', () => (ws.isAlive = true));
+    ws.missed = 0;
+    ws.on('pong', () => (ws.missed = 0));
     ws.on('message', (data, isBinary) => {
+      ws.missed = 0;
       if (isBinary) return ws.close(1003, 'text only');
       handlers.message(data.toString());
     });
@@ -171,15 +172,16 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
-// Drop sockets that stop answering (phones going to sleep, dead NAT mappings).
+// Drop sockets that stop answering (phones going to sleep, dead NAT mappings). Three silent
+// rounds, not one: links through Cloudflare from mainland China can stall for over 25 s and recover.
 const heartbeat = setInterval(() => {
   for (const ws of wss.clients) {
-    if (!ws.isAlive) {
-      log('info', 'ws.timeout', { why: 'no pong in 25s' });
+    if (ws.missed >= 3) {
+      log('info', 'ws.timeout', { why: 'nothing received in 75s' });
       ws.terminate();
       continue;
     }
-    ws.isAlive = false;
+    ws.missed++;
     ws.ping();
   }
 }, 25_000);

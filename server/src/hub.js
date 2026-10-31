@@ -10,7 +10,8 @@ const KIND_MAX = 24;
 const LINKS_MAX = 64;
 const SIGNAL_DATA_MAX = 32 * 1024;
 const PAIR_TTL_S = 300;
-const HELLO_TIMEOUT_MS = 10_000;
+// Long on purpose: from mainland China a hello reached us 23 s after the challenge went out.
+const HELLO_TIMEOUT_MS = 45_000;
 
 const ID_RE = /^[A-Za-z0-9_-]{43}$/;
 

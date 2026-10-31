@@ -237,6 +237,7 @@ try {
   check(true, 'no answer to the ping closes the link');
   await b.evaluate(() => { delete softdrop.engine.ctl; });
   await a.evaluate((id) => softdrop.peers.get(id).ready(), idB);
+  await a.waitForFunction((id) => softdrop.peers.links.get(id).route, idB, { timeout: 5000 });
 
   step('activity list');
   const ids = await a.$$eval('.list .item', (els) => els.map((e) => e.dataset.id));
