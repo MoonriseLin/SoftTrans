@@ -24,6 +24,7 @@ So the page and signaling move behind the Cloudflare proxy, and STUN and TURN us
 - `turn.pantsu.uk`: DNS only, `TURN_HOST` in `/etc/softdrop/softdrop.env`. It shares the `mio.pantsu.uk` certificate, which coturn uses for port 5349.
 - `deploy/cloudflare-realip.conf` lets the 443 server read `CF-Connecting-IP` only from Cloudflare's ranges. Device grouping depends on this. Refresh it if Cloudflare publishes new ranges.
 - Keep Rocket Loader and Web Analytics off for this site: both inject scripts, which the CSP blocks and the no-tracking rule forbids.
+- Behind Cloudflare the site has IPv6 addresses, so a browser may connect over IPv6 where it used to use IPv4. Two devices on one network that use different families get different groups and no longer appear as nearby unless they are paired. To run the e2e test reliably, force one family, for example with Chromium's `--host-resolver-rules=MAP mio.pantsu.uk <Cloudflare IPv4>`.
 - Same-Wi-Fi transfers only need signaling. If UDP to the VPS is blocked too, the relay will not work from the mainland and needs another host.
 
 ### Logs
