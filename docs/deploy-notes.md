@@ -6,13 +6,25 @@
 - nginx (custom build in `/usr/local/nginx`): `servers/mio.pantsu.uk.conf`, from `deploy/nginx-softdrop.conf`. nginx passes `X-Real-IP`. The app trusts that header only from loopback.
 - App: `softdrop.service` (systemd, user `softdrop`, hardened). Runs `/opt/softdrop/server/src/index.js` on `127.0.0.1:8480` and serves `/opt/softdrop/web`. Config and the TURN secret live in `/etc/softdrop/softdrop.env` (root only). Redeploy with `sh deploy/install.sh`.
 - coturn (Debian package): `/etc/turnserver.conf`, from `deploy/turnserver.conf` with the secret filled in. Ports 3478 udp/tcp and 5349 tcp (TLS). The relay range is **49160–49999/udp**, narrowed to stay clear of other services on the host.
-- Certificate: Let's Encrypt for `mio.pantsu.uk` (webroot `/var/www/acme`, ECDSA), renewed by the existing certbot timer. The deploy hook `/etc/letsencrypt/renewal-hooks/deploy/coturn-softdrop.sh` copies it to `/etc/coturn/certs` and restarts coturn. The existing hook reloads nginx.
+- Certificate: Let's Encrypt for `mio.pantsu.uk` and `turn.pantsu.uk` (webroot `/var/www/acme`, ECDSA), renewed by the existing certbot timer. The deploy hook `/etc/letsencrypt/renewal-hooks/deploy/coturn-softdrop.sh` copies it to `/etc/coturn/certs` and restarts coturn. The existing hook reloads nginx.
 - Health: `curl https://mio.pantsu.uk/healthz` returns counts only, no IDs.
 - Firewall: the host has no nftables or iptables rules. If the provider has a cloud firewall, open 80/tcp, 443/tcp, 8443/tcp (redirect only), 3478/udp+tcp, 5349/tcp and 49160–49999/udp.
 
 ### Shadowrocket rules
 
 `https://mio.pantsu.uk/rules/sr_cnip_ad.conf` is served by nginx from `/var/www/softdrop-rules/`. It is rebuilt daily at 08:30 UTC by `softdrop-rules.timer` (`shadowrocket/build.sh`). See `shadowrocket/README.md`. If the upstream download fails or looks wrong, the old file stays in place. Check with `journalctl -u softdrop-rules`.
+
+### Reaching the site from mainland China (October 2026)
+
+On 2026-10-31 direct TCP to the VPS IP `45.89.232.91` timed out from every mainland test node (Tencent, Alibaba, China Unicom; ports 22, 80, 443, 3478, 5349, 8443), while ICMP worked, DNS answers were correct and 40 nodes outside China returned 200. The last mainland client connected on 2026-10-27. Sites on this VPS behind the Cloudflare proxy stayed reachable. Where the packets are dropped was not measured, and UDP was not tested.
+
+So the page and signaling move behind the Cloudflare proxy, and STUN and TURN use `turn.pantsu.uk`, a DNS-only record, because Cloudflare does not carry them:
+
+- `mio.pantsu.uk`: Proxied. Cloudflare SSL mode must be Full (strict): Flexible would loop on the port 80 redirect.
+- `turn.pantsu.uk`: DNS only, `TURN_HOST` in `/etc/softdrop/softdrop.env`. It shares the `mio.pantsu.uk` certificate, which coturn uses for port 5349.
+- `deploy/cloudflare-realip.conf` lets the 443 server read `CF-Connecting-IP` only from Cloudflare's ranges. Device grouping depends on this. Refresh it if Cloudflare publishes new ranges.
+- Keep Rocket Loader and Web Analytics off for this site: both inject scripts, which the CSP blocks and the no-tracking rule forbids.
+- Same-Wi-Fi transfers only need signaling. If UDP to the VPS is blocked too, the relay will not work from the mainland and needs another host.
 
 ### Logs
 

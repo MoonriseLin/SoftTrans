@@ -8,7 +8,7 @@
 
 **What the SoftTrans rules do:**
 
-- `DOMAIN,mio.pantsu.uk` and `IP-CIDR,45.89.232.91/32` → DIRECT. Signaling matches by domain. STUN and TURN are raw packets to the server's IP with no hostname, so they need the IP rule. Without it they fall through to `FINAL,PROXY`.
+- `DOMAIN,mio.pantsu.uk`, `DOMAIN,turn.pantsu.uk` and `IP-CIDR,45.89.232.91/32` → DIRECT. Signaling matches by domain. STUN and TURN are raw packets to the server's IP with no hostname, so they need the IP rule. Without it they fall through to `FINAL,PROXY`.
 - Private ranges → DIRECT, as a backstop. The upstream `bypass-tun` already keeps them, and `224.0.0.0/4` for mDNS, out of the tunnel.
 
 `skip-proxy` already includes `*.local`, and `bypass-tun` covers `224.0.0.0/4`. The earlier hand-added `DOMAIN-SUFFIX,local` and `224.0.0.251` rules had no effect, so they were dropped.

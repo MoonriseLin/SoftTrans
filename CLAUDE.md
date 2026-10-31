@@ -21,6 +21,7 @@ Build steps 1–7 are working. The app is deployed at **[https://mio.pantsu.uk](
 - `e2e/run.mjs`: a two-browser Playwright test covering presence, text and file transfer, hash check, auto-accept, progress sizes, cancel, pairing by code, and reload. It runs locally or against production, with an optional forced relay.
 - `deploy/`: nginx, systemd and coturn configs, `install.sh`, and `logs.sh` to follow the logs.
 - Debugging: debug mode is currently on by default (`DEBUG_DEFAULT` in `web/js/log.js`; set it to false after testing). `?debug=0` or `?debug=1` overrides it per browser. Debug mode records page logs and streams them to the server journal; the log panel is hidden unless the URL has `?debug=1`. Use `dlog()` from `web/js/log.js` for new client events. Server events go through `log()` in `server/src/log.js`. Never log file contents, keys or full pairing codes.
+- Hosting: direct TCP to the VPS IP is unreachable from mainland China, so `mio.pantsu.uk` goes through the Cloudflare proxy and STUN/TURN use the DNS-only `turn.pantsu.uk`. See `docs/deploy-notes.md`.
 - `web/js/vendor/qrcode.js`: qrcode-generator 1.4.4 (MIT), vendored as an ES module for the pairing QR code (`#pair=1234` links join automatically).
 - `prototype/index.html` is still the visual reference. It is no longer the app.
 

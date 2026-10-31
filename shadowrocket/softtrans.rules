@@ -4,6 +4,7 @@
 # IP with no hostname attached, so the IP has to be matched too; otherwise they
 # fall through to FINAL,PROXY and the relay detours through the proxy.
 DOMAIN,mio.pantsu.uk,DIRECT
+DOMAIN,turn.pantsu.uk,DIRECT
 IP-CIDR,45.89.232.91/32,DIRECT,no-resolve
 # Device-to-device traffic on the home network. bypass-tun in [General] already
 # keeps these ranges (and 224.0.0.0/4, which mDNS .local lookups use) out of the
